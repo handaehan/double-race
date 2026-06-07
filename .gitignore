@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+
+generate_data.py
+generate_ronaldo_messi.py
+server.py
+
+db/raw/

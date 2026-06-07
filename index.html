@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <!-- viewport-fit=cover : 아이폰 Dynamic Island / 노치 영역까지 safe-area-inset 으로 핸들링 -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>투자 레이스</title>
+
+  <!-- iOS Safari 상태바 / 홈화면 추가 시 외형 -->
+  <meta name="theme-color" content="#0a0a0d" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="투자 레이스" />
+  <link rel="manifest" href="./manifest.webmanifest" />
+
+  <!-- 홈화면 아이콘 — iOS Safari 가 캡처본 대신 이 아이콘을 사용
+       SVG 는 일부 iOS 버전에서만 지원 → PNG 변환본도 같이 두는 게 가장 안전.
+       (icons/icon-192.png, icons/icon-512.png 파일을 추가하면 자동 적용) -->
+  <link rel="apple-touch-icon" href="./icons/icon.svg" />
+  <link rel="apple-touch-icon" sizes="192x192" href="./icons/icon-192.png" />
+  <link rel="apple-touch-icon" sizes="512x512" href="./icons/icon-512.png" />
+  <link rel="icon" type="image/svg+xml" href="./icons/icon.svg" />
+  <link rel="icon" sizes="192x192" href="./icons/icon-192.png" />
+
+  <!-- 모던 한글 폰트 — Pretendard (Variable) -->
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+  <link rel="stylesheet" as="style" crossorigin
+        href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" />
+
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/echarts/dist/echarts.min.js"></script>
+</head>
+<body>
+
+  <main class="app">
+
+    <!-- ======================================== -->
+    <!-- 좌측 — 3단계 + 고급 설정                 -->
+    <!-- ======================================== -->
+    <aside class="sidebar">
+      <div class="brand-row">
+        <h2 class="brand">📊 투자 레이스</h2>
+        <button id="btn-open-db" type="button" class="db-btn" title="데이터베이스 관리">
+          📦 데이터
+        </button>
+      </div>
+
+      <!-- 인기 비교 주제 — 한 클릭으로 종목/기간/투자금 세팅 -->
+      <section class="presets" id="presetsRow" aria-label="인기 비교 주제">
+        <div class="presets-scroll">
+          <!-- JS 가 채워넣음 -->
+        </div>
+      </section>
+
+      <!-- 처음이신가요? — localStorage 로 dismiss 추적. 각 단계에 툴팁 -->
+      <section class="welcome-card" id="welcomeCard" hidden>
+        <div class="wc-head">
+          <span class="wc-icon">✨</span>
+          <strong>처음이신가요?</strong>
+          <button class="wc-close" id="welcomeClose" type="button" aria-label="닫기">×</button>
+        </div>
+        <ol class="wc-steps">
+          <li title="아래 [01 투자 조건 설정] 에서 시작일·종료일·매월 투자금을 입력합니다">
+            <span class="wc-step">1</span> 투자 기간 입력
+          </li>
+          <li title="아래 [02 비교 종목 선택] 에서 비교할 자산 2개를 고릅니다 (S&P500, 코스피 등)">
+            <span class="wc-step">2</span> 비교 종목 선택
+          </li>
+          <li title="[03 영상 생성] 의 ▶ 투자 결과 보기 버튼으로 그래프 애니메이션을 시작합니다">
+            <span class="wc-step">3</span> 투자 결과 보기
+          </li>
+        </ol>
+      </section>
+
+      <!-- ─── 1단계: 투자 조건 설정 ─── -->
+      <section class="step">
+        <h3 class="step-h">
+          <span class="step-num">1</span>
+          <!-- 모드별 텍스트: investment="투자 조건 설정" / sports="기간 설정" -->
+          <span data-mode-text="investment=투자 조건 설정|sports=기간 설정">투자 조건 설정</span>
+        </h3>
+
+        <div class="field-row">
+          <label class="field">
+            <span>시작일</span>
+            <input id="inp-sim-start" type="text" placeholder="2010-01" />
+          </label>
+          <label class="field">
+            <span>종료일</span>
+            <input id="inp-sim-end" type="text" placeholder="2026-05" />
+          </label>
+        </div>
+
+        <!-- investment-only: sports/ranking 모드에선 CSS 가 자동 hide.
+             DOM 제거 X — investment 복귀 시 즉시 원복 -->
+        <label class="field investment-only">
+          <span>매월 투자금 (원)</span>
+          <input id="inp-sim-amount" type="number" min="0" step="any" value="300000" />
+        </label>
+      </section>
+
+      <!-- ─── 2단계: 비교 종목 선택 ─── -->
+      <section class="step">
+        <h3 class="step-h">
+          <span class="step-num">2</span>비교 종목 선택
+          <button id="btn-add-series" type="button" class="ghost mini header-action">＋ 비교 추가</button>
+        </h3>
+        <div id="series-list"></div>
+      </section>
+
+      <!-- ─── 3단계: 영상 생성 ─── -->
+      <section class="step">
+        <h3 class="step-h"><span class="step-num">3</span>영상 생성</h3>
+
+        <button id="btn-restart-play" type="button" class="action primary">
+          ▶ 투자 결과 보기
+        </button>
+        <div class="field-row">
+          <button id="btn-sb-play"  type="button" class="action half">▶ 다시 보기</button>
+          <button id="btn-sb-pause" type="button" class="action half">⏸ 일시정지</button>
+        </div>
+      </section>
+
+      <!-- ─── 4단계: 영상 옵션 (이전 '고급 설정' — 평평하게) ─── -->
+      <section class="step">
+        <h3 class="step-h"><span class="step-num">4</span>영상 옵션</h3>
+
+        <label class="field">
+          <span>재생 속도</span>
+          <select id="inp-speed">
+            <option value="20">느리게 (20초)</option>
+            <option value="12" selected>보통 (12초)</option>
+            <option value="7">빠르게 (7초)</option>
+            <option value="4">매우 빠르게 (4초)</option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span>제목 (후크 카피, 줄바꿈 가능)</span>
+          <textarea id="inp-title" rows="2" placeholder="예) 10년 전 1억을 넣었다면?"></textarea>
+        </label>
+
+        <label class="field">
+          <span>부제 (빨강 강조)</span>
+          <input id="inp-subtitle" type="text" placeholder="자동: 시리즈 이름 ' VS ' 연결" />
+        </label>
+
+        <div class="check-grid">
+          <label class="check"><input id="inp-show-x" type="checkbox" checked /><span>X축</span></label>
+          <label class="check"><input id="inp-show-y" type="checkbox" checked /><span>Y축</span></label>
+          <label class="check"><input id="inp-show-grid" type="checkbox" /><span>격자</span></label>
+          <label class="check"><input id="inp-show-endlabel" type="checkbox" checked /><span>끝 라벨</span></label>
+          <label class="check"><input id="inp-show-overtake" type="checkbox" /><span>추월 이벤트</span></label>
+          <label class="check" title="YouTube Shorts UI(좋아요·댓글·공유·채널명) 위험영역을 빨강으로 표시">
+            <input id="inp-show-shorts-safe" type="checkbox" /><span>📱 Shorts Safe</span>
+          </label>
+        </div>
+      </section>
+
+      <!-- ─── 5단계: 데이터 갱신 ─── -->
+      <section class="step">
+        <h3 class="step-h"><span class="step-num">5</span>데이터 갱신</h3>
+        <button id="btn-generate-data" type="button" class="action accent">
+          🔄 최신 데이터 확인
+        </button>
+        <p class="step-hint">
+          새로운 월 데이터가 yfinance 에 있으면 자동 추가합니다 (기존 데이터 보존).
+        </p>
+        <button id="btn-csv-reload" type="button" class="action" title="db/ 의 CSV 파일을 다시 읽어 그래프에 반영합니다">
+          📁 데이터 불러오기
+        </button>
+        <div id="csv-info" class="csv-info" hidden></div>
+      </section>
+
+      <!-- 푸터 — 기본값 복원 -->
+      <button id="btn-restore-defaults" type="button" class="ghost ghost-warn footer-btn">
+        🔄 기본값 복원
+      </button>
+
+      <!-- 숨김 (JS 가 참조하지만 UI 에 노출 안 함) — 자주 쓰지 않는 고급 옵션 -->
+      <div class="hidden-controls" hidden>
+        <input id="inp-unit" type="text" value="원" />
+        <select id="inp-period"><option value="month" selected>월별</option></select>
+        <input id="inp-sim-enabled" type="checkbox" checked />
+        <select id="inp-sim-mode"><option value="monthly" selected>매월 적립</option></select>
+        <textarea id="inp-csv"></textarea>
+        <button id="btn-csv-load" type="button"></button>
+        <div id="csv-notice" class="csv-notice"></div>
+      </div>
+    </aside>
+
+    <!-- ======================================== -->
+    <!-- 우측 — 9:16 프레임                        -->
+    <!-- ======================================== -->
+    <section class="preview">
+
+      <!-- 언어 토글 — Shorts 출력물(프레임/콘텐츠 도구)만 영문화. 사이드바는 ko 유지.
+           localStorage(ir_lang) 영속. JS 가 applyLanguageToUI() 로 [data-i18n] 노드 갱신. -->
+      <div class="lang-toggle" role="tablist" aria-label="Output language">
+        <button type="button" class="lt-btn" data-lang="ko" role="tab" aria-selected="true">🌐 한국어</button>
+        <button type="button" class="lt-btn" data-lang="en" role="tab" aria-selected="false">English</button>
+      </div>
+
+      <!-- export-target: 영상 녹화 시 이 노드가 캡처 대상. 향후 .video-canvas /
+           .export-mode 같은 추가 hook 도 이 클래스 기반으로 분기 가능. -->
+      <div class="frame export-target" id="frame" aria-label="숏츠 프레임">
+
+        <header class="frame-header">
+          <h1 class="title" id="title">제목</h1>
+          <div class="subtitle" id="subtitle"></div>
+          <div class="date" id="date">----.--</div>
+          <div class="progress" aria-hidden="true">
+            <div class="progress-bar" id="progressBar"></div>
+          </div>
+        </header>
+
+        <div class="chart-wrap">
+          <div class="chart" id="chart"></div>
+          <div class="chart-legend" id="chartLegend"></div>
+          <div class="banner" id="banner" aria-live="polite"></div>
+
+          <!-- 끝점 아이콘 오버레이 — JS 가 chart.convertToPixel 로 좌표 계산해 채움 -->
+          <div class="endpoint-overlay" id="endpointOverlay" aria-hidden="true">
+            <!-- 원금 끝점 라벨 — 투자 모드 + 애니메이션 종료시에만 표시.
+                 시리즈 끝점 라벨보다 훨씬 약한 톤. -->
+            <div class="principal-end-label" id="principalEndLabel" hidden aria-hidden="true">
+              <span class="pe-name">원금</span>
+              <span class="pe-value"></span>
+            </div>
+          </div>
+
+          <!-- 데이터 없을 때 (sports preparing) 중앙 안내 — frame.empty-sports 일 때 표시 -->
+          <div class="empty-overlay" id="emptyOverlay" aria-hidden="true">
+            <span class="eo-icon">⚽</span>
+            <span class="eo-title" data-i18n="emptyTitle">데이터 준비중</span>
+            <span class="eo-desc" data-i18n="emptyDesc" data-i18n-html="1">실제 경기 데이터를<br>수집 중입니다</span>
+            <span class="eo-pair" id="emptyOverlayPair"></span>
+            <span class="eo-status" data-i18n="emptyStatus">준비중...</span>
+          </div>
+
+          <!-- 데이터 범위 불일치 경고 (자동 표시) -->
+          <div class="range-warning" id="rangeWarning" hidden>
+            <div class="rw-icon">⚠️</div>
+            <div class="rw-body">
+              <div class="rw-title">데이터 범위 불일치</div>
+              <div class="rw-msg" id="rangeWarningMsg"></div>
+              <div class="rw-fix">
+                터미널에서 <code>python generate_data.py</code> 실행 →<br>
+                ② <strong>데이터 불러오기</strong> → ⚙️ <strong>수정 내용 반영</strong>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="results" id="results"></div>
+
+      </div>
+
+      <!-- 콘텐츠 도구 — 접기/펼치기. 기본 접힘. 추천 제목/해시태그/영상 저장 -->
+      <section class="content-tools collapsed" id="contentTools">
+        <button type="button" class="ct-toggle" id="contentToolsToggle" aria-expanded="false">
+          <span class="ct-toggle-label" data-i18n="labelTools">콘텐츠 도구</span>
+          <span class="ct-toggle-icon">▾</span>
+        </button>
+        <div class="ct-body" id="contentToolsBody">
+          <!-- 추천 제목 (후크 + VS) -->
+          <div class="ct-card">
+            <div class="ct-card-head">
+              <span class="ct-card-label" data-i18n="labelTitle">추천 제목</span>
+              <button type="button" class="ct-copy" data-copy-target="ct-title-preview" data-i18n="copyBtn">복사</button>
+            </div>
+            <div class="ct-title-preview" id="ct-title-preview">자동 생성됩니다</div>
+          </div>
+          <!-- 부제목 (조건 요약) -->
+          <div class="ct-card">
+            <div class="ct-card-head">
+              <span class="ct-card-label" data-i18n="labelSubtitle">부제목</span>
+              <button type="button" class="ct-copy" data-copy-target="ct-subtitle-preview" data-i18n="copyBtn">복사</button>
+            </div>
+            <div class="ct-subtitle-preview" id="ct-subtitle-preview">자동 생성됩니다</div>
+          </div>
+          <!-- 해시태그 -->
+          <div class="ct-card">
+            <div class="ct-card-head">
+              <span class="ct-card-label" data-i18n="labelHashtag">해시태그</span>
+              <button type="button" class="ct-copy" data-copy-target="ct-hashtags" data-i18n="copyBtn">복사</button>
+            </div>
+            <div class="ct-hashtags" id="ct-hashtags"></div>
+          </div>
+          <!-- 영상 저장 -->
+          <div class="ct-card">
+            <div class="ct-card-head">
+              <span class="ct-card-label" data-i18n="labelSave">영상 저장</span>
+              <!-- 엔진 상태 칩: loading/ready/error 세 가지. error 시 클릭하면 재시도 -->
+              <button type="button" class="ffmpeg-status" id="ffmpegStatus"
+                      data-state="idle" title="MP4 변환 엔진 상태 — 탭하면 다시 시도">
+                <span class="ffs-dot" aria-hidden="true"></span>
+                <span class="ffs-label">대기중</span>
+              </button>
+            </div>
+            <button type="button" id="btn-save-video" class="ct-action" data-i18n="saveBtn">🎬 그래프 녹화</button>
+            <p class="ct-hint" id="saveVideoHint"></p>
+          </div>
+        </div>
+      </section>
+    </section>
+
+  </main>
+
+  <!-- ======================================== -->
+  <!-- 📦 DB 모달 — 종목 데이터 관리              -->
+  <!-- ======================================== -->
+  <dialog id="dbModal" class="db-modal">
+    <header class="db-header">
+      <h2>📦 데이터베이스</h2>
+      <button class="db-close" id="db-close-btn" type="button" aria-label="닫기">×</button>
+    </header>
+
+    <section class="db-stats">
+      <div><span class="lbl">총 데이터</span><span class="val" id="db-count">0</span><span class="unit">개</span></div>
+      <div><span class="lbl">최신 업데이트</span><span class="val" id="db-updated">-</span></div>
+      <div><span class="lbl">서버</span><span class="val" id="db-server-status">확인 중...</span></div>
+    </section>
+
+    <table class="db-table">
+      <thead>
+        <tr>
+          <th>카테고리</th>
+          <th>종목</th>
+          <th>티커</th>
+          <th>기간</th>
+          <th>개월</th>
+          <th>상태</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="db-tbody"></tbody>
+    </table>
+
+    <section class="db-add">
+      <h3>+ 새 주식 다운로드 (yfinance)</h3>
+      <div class="db-add-row">
+        <input id="db-add-name"   type="text" placeholder="이름 (예: 테슬라)" />
+        <input id="db-add-symbol" type="text" placeholder="심볼 / 파일명 (예: tsla)" />
+        <input id="db-add-ticker" type="text" placeholder="yfinance 티커 (예: TSLA)" />
+        <button id="db-add-btn" type="button" class="db-action">다운로드</button>
+      </div>
+      <p class="db-hint">
+        <strong>자주 쓰는 티커:</strong>
+        <code>^GSPC</code> S&P500 ·
+        <code>^IXIC</code> 나스닥 ·
+        <code>^KS11</code> 코스피 ·
+        <code>BTC-USD</code> 비트코인 ·
+        <code>AAPL</code> 애플 ·
+        <code>005930.KS</code> 삼성전자 ·
+        <code>GLD</code> 금ETF
+      </p>
+      <p class="db-hint warn" id="db-server-warn" hidden>
+        ⚠️ <code>server.py</code> 가 실행 중이지 않아 다운로드 API 를 호출할 수 없습니다.<br>
+        터미널에서 <code>python3 server.py</code> 를 실행하고 <code>http://localhost:5500</code> 으로 접속하세요.
+      </p>
+    </section>
+
+    <section class="db-add">
+      <h3>+ 카드 / 콜렉터블 CSV 업로드</h3>
+      <p class="db-hint">
+        yfinance 에 없는 자산 (포켓몬카드, MTG, 시계, 명화 등) 은 외부 소스
+        (<code>PriceCharting</code> · <code>PSA APR</code> · <code>CardLadder</code>) 에서
+        받은 월별 가격 CSV 를 직접 업로드합니다. 형식: <code>date,price</code> (예: <code>2017-01,1450</code>).
+      </p>
+      <div class="db-add-row">
+        <input id="db-up-name"   type="text" placeholder="이름 (예: Charizard PSA10)" />
+        <input id="db-up-symbol" type="text" placeholder="심볼 / 파일명 (예: pokemon_charizard)" />
+        <select id="db-up-category" title="카테고리">
+          <option value="card" selected>카드</option>
+          <option value="commodity">원자재</option>
+          <option value="watch">시계</option>
+          <option value="art">예술품</option>
+          <option value="other">기타</option>
+        </select>
+      </div>
+      <textarea id="db-up-csv" class="db-csv-input" rows="6"
+        placeholder="date,price&#10;2017-01,1450&#10;2017-02,1500&#10;..."></textarea>
+      <div class="db-add-row">
+        <label class="db-file-label">
+          <input id="db-up-file" type="file" accept=".csv,text/csv,text/plain" hidden />
+          <span class="db-action ghost">📁 CSV 파일 선택</span>
+        </label>
+        <button id="db-up-btn" type="button" class="db-action">업로드</button>
+      </div>
+    </section>
+  </dialog>
+
+  <!-- ======================================== -->
+  <!-- 🎨 아이콘 선택 모달                       -->
+  <!-- ======================================== -->
+  <dialog id="iconModal" class="icon-modal">
+    <header class="icon-modal-head">
+      <h3>📍 끝점 아이콘</h3>
+      <button class="icon-modal-close" id="icon-modal-close" type="button" aria-label="닫기">×</button>
+    </header>
+
+    <div class="icon-modal-tabs">
+      <button type="button" class="icon-tab active" data-tab="auto">자동</button>
+      <button type="button" class="icon-tab" data-tab="emoji">이모지</button>
+      <button type="button" class="icon-tab" data-tab="image">업로드</button>
+    </div>
+
+    <section class="icon-tab-pane" data-pane="auto">
+      <p class="icon-pane-hint">
+        종목 이름의 약어를 색상 라벨로 자동 생성합니다.
+        모양을 선택하세요.
+      </p>
+      <div class="shape-picker" id="shapePicker" role="radiogroup" aria-label="아이콘 모양">
+        <button type="button" class="shape-opt" data-shape="circle" aria-pressed="true">
+          <span class="shape-preview shape-circle"></span>
+          <span class="shape-name">원형</span>
+        </button>
+        <button type="button" class="shape-opt" data-shape="hex">
+          <span class="shape-preview shape-hex"></span>
+          <span class="shape-name">육각형</span>
+        </button>
+        <button type="button" class="shape-opt" data-shape="card">
+          <span class="shape-preview shape-card"></span>
+          <span class="shape-name">카드</span>
+        </button>
+      </div>
+      <button type="button" class="db-action" id="icon-pick-auto">자동으로 설정</button>
+    </section>
+
+    <section class="icon-tab-pane" data-pane="emoji" hidden>
+      <p class="icon-pane-hint">이모지 하나를 선택하세요.</p>
+      <div class="icon-emoji-grid" id="icon-emoji-grid">
+        <button type="button" class="icon-emoji">📈</button>
+        <button type="button" class="icon-emoji">📉</button>
+        <button type="button" class="icon-emoji">💰</button>
+        <button type="button" class="icon-emoji">💵</button>
+        <button type="button" class="icon-emoji">🪙</button>
+        <button type="button" class="icon-emoji">🏆</button>
+        <button type="button" class="icon-emoji">🚀</button>
+        <button type="button" class="icon-emoji">🔥</button>
+        <button type="button" class="icon-emoji">⭐</button>
+        <button type="button" class="icon-emoji">💎</button>
+        <button type="button" class="icon-emoji">🐂</button>
+        <button type="button" class="icon-emoji">🐻</button>
+        <button type="button" class="icon-emoji">🇰🇷</button>
+        <button type="button" class="icon-emoji">🇺🇸</button>
+        <button type="button" class="icon-emoji">🇯🇵</button>
+        <button type="button" class="icon-emoji">🍎</button>
+        <button type="button" class="icon-emoji">⚡</button>
+        <button type="button" class="icon-emoji">🛒</button>
+      </div>
+    </section>
+
+    <section class="icon-tab-pane" data-pane="image" hidden>
+      <!-- 업로드 전 상태: 큰 dropzone (PC: drag&drop / 모바일: 탭) -->
+      <label class="upload-zone" id="iconUploadZone" for="icon-file-input">
+        <!-- gif/svg/heic 차단: 명시적 whitelist (jpeg/jpg/png/webp 만) -->
+        <input type="file" id="icon-file-input"
+               accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp" hidden />
+        <span class="uz-icon" aria-hidden="true">
+          <!-- 인라인 line icon: 화살표가 박스 위로 (업로드 메타포) -->
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="1.6"
+               stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 16V4"/>
+            <path d="M6 10l6-6 6 6"/>
+            <path d="M4 20h16"/>
+          </svg>
+        </span>
+        <span class="uz-title">이미지 업로드</span>
+        <span class="uz-desc">끝점 아이콘으로 사용할 이미지를 넣어주세요</span>
+        <span class="uz-meta">PNG · JPG · WebP</span>
+        <span class="uz-dnd-hint">또는 여기로 끌어다 놓기</span>
+      </label>
+
+      <!-- 업로드 후 상태: 큰 원형 미리보기 + 변경/삭제 -->
+      <div class="upload-result" id="iconUploadResult" hidden>
+        <div class="ur-preview-wrap">
+          <img id="icon-preview-img" class="ur-preview" alt="업로드된 이미지" />
+        </div>
+        <div class="ur-actions">
+          <button type="button" class="ur-btn ur-change" id="iconUploadChange">변경</button>
+          <button type="button" class="ur-btn ur-remove" id="iconUploadRemove">삭제</button>
+        </div>
+      </div>
+    </section>
+  </dialog>
+
+  <!-- ========================================
+       ⚽ 데이터 준비중 안내 모달
+       ======================================== -->
+  <dialog id="dataPrepModal" class="data-prep-modal">
+    <button class="dp-close" id="dataPrepClose" type="button" aria-label="닫기">×</button>
+    <div class="dp-icon" aria-hidden="true">⚽</div>
+    <h2 class="dp-title">데이터 준비중</h2>
+    <p class="dp-body">실제 경기 기록 기반 데이터를 정리 중입니다.</p>
+
+    <div class="dp-section">
+      <span class="dp-section-label">예정 데이터</span>
+      <ul class="dp-list">
+        <li>✓ 호날두 vs 메시 누적 골</li>
+        <li>✓ 손흥민 vs 박지성</li>
+        <li>✓ 르브론 vs 조던</li>
+        <li>✓ 포켓몬 카드 시세</li>
+      </ul>
+    </div>
+
+    <p class="dp-foot">데이터 수집 완료 시 자동 활성화됩니다.</p>
+    <button id="dataPrepOk" type="button" class="dp-action">확인</button>
+  </dialog>
+
+  <script src="script.js"></script>
+</body>
+</html>

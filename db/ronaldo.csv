@@ -1,0 +1,12 @@
+# unit: 골
+# value_mode: cumulative_sum   (월 골 → 프론트가 누적합으로 그래프)
+# policy: 미수집 월은 라인 자체를 생략 (0 으로 추정 채우지 않음)
+# source: db/raw/ronaldo_matches.csv (경기별 자동 집계)
+date,price
+2002-01,0
+2002-02,0
+2002-03,0
+2002-04,0
+2002-05,0
+2002-06,0
+2002-07,0
