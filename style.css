@@ -796,6 +796,78 @@ button.action.primary:hover {
 }
 
 /* ───────────────────────────────────────────────
+   📱 모바일 sticky 하단 CTA — 가장 중요한 액션 항상 노출
+   - 데스크탑(≥1200px): display:none (사이드바 인라인 CTA 가 항상 보임)
+   - 모바일(<1200px): 화면 하단 고정. iOS safe-area inset 대응.
+   - 본문은 padding-bottom 으로 가려지지 않게 보정.
+   ─────────────────────────────────────────────── */
+.mobile-cta-bar {
+  display: none;   /* 데스크탑 기본값 */
+}
+
+@media (max-width: 1199px) {
+  .mobile-cta-bar {
+    display: block;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 90;   /* lang-toggle(없음) / DB 모달(>1000) 보다 낮게, 일반 콘텐츠보다 높게 */
+    padding: 10px clamp(12px, 4vw, 18px);
+    padding-bottom: calc(10px + env(safe-area-inset-bottom));
+    /* 위쪽 페이드 — 콘텐츠가 바 뒤로 자연스럽게 흘러 들어가도록 */
+    background: linear-gradient(
+      180deg,
+      rgba(10, 10, 13, 0)    0%,
+      rgba(10, 10, 13, 0.85) 38%,
+      rgba(10, 10, 13, 0.96) 100%
+    );
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    /* 페이드 영역은 클릭 통과, 버튼만 클릭 받음 */
+    pointer-events: none;
+  }
+  .mobile-cta {
+    pointer-events: auto;
+    display: block;
+    width: 100%;
+    padding: 15px 16px;
+    font-size: 16px;
+    font-weight: 800;
+    font-family: inherit;
+    letter-spacing: -0.3px;
+    color: #1a0e00;
+    background: linear-gradient(135deg, #FFD54F 0%, #FFAA50 100%);
+    border: none;
+    border-radius: 14px;
+    box-shadow:
+      0 6px 22px rgba(255, 170, 80, 0.40),
+      0 1px 0 rgba(255, 255, 255, 0.45) inset;
+    cursor: pointer;
+    transition: transform 0.08s ease, filter 0.15s ease, box-shadow 0.15s ease;
+  }
+  .mobile-cta:hover  { filter: brightness(1.05); }
+  .mobile-cta:active { transform: scale(0.985); }
+  .mobile-cta:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  /* 본문이 sticky CTA 아래로 가려지지 않도록 — 사이드바 마지막 항목까지 보이게 */
+  body {
+    padding-bottom: calc(78px + env(safe-area-inset-bottom));
+  }
+
+  /* 모바일에서 사이드바 인라인 CTA 도 한 단계 더 눈에 띄게 — 첫 진입 후
+     사용자가 사이드바까지 스크롤했을 때 곧바로 누를 수 있도록 살짝 강조 */
+  .step-cta .cta-hero {
+    font-size: 15.5px;
+    padding: 15px 14px;
+  }
+}
+
+/* ───────────────────────────────────────────────
    고급 설정 (접힘 / 펼침) — details/summary
    ─────────────────────────────────────────────── */
 .advanced {

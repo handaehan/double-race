@@ -1133,14 +1133,16 @@ function applyModeToUI() {
   const mode = getCurrentMode();
   document.body.dataset.mode = mode;
 
-  // CTA 버튼 문구
+  // CTA 버튼 문구 — 사이드바 인라인 CTA + 모바일 sticky CTA 미러링
+  const dict = I18N[_currentLang()] || I18N.ko;
+  const key  = 'cta' + mode.charAt(0).toUpperCase() + mode.slice(1);   // ctaInvestment / ctaSports / ctaRanking
+  const ctaLabel = dict[key] || MODE_CTA_LABELS[mode] || '▶ 시작';
+
   const cta = document.getElementById('btn-restart-play');
-  // CTA 텍스트 — mode + lang 양쪽 반영. I18N 의 cta<Mode> 키 사용.
-  if (cta) {
-    const dict = I18N[_currentLang()] || I18N.ko;
-    const key = 'cta' + mode.charAt(0).toUpperCase() + mode.slice(1);   // ctaInvestment / ctaSports / ctaRanking
-    cta.textContent = dict[key] || MODE_CTA_LABELS[mode] || '▶ 시작';
-  }
+  if (cta) cta.textContent = ctaLabel;
+
+  const mobileCta = document.getElementById('btn-mobile-cta');
+  if (mobileCta) mobileCta.textContent = ctaLabel;
 
   // 모드별 텍스트 노드 (data-mode-text="investment값|sports값|...")
   document.querySelectorAll('[data-mode-text]').forEach(el => {
@@ -2586,6 +2588,12 @@ if (playBtn)  playBtn .addEventListener('click', play);
 if (pauseBtn) pauseBtn.addEventListener('click', pause);
 if (resetBtn) resetBtn.addEventListener('click', reset);
 if (speedBtn) speedBtn.addEventListener('click', cycleSpeedMul);
+
+// 모바일 sticky 하단 CTA — 인라인 메인 CTA 와 동일 동작 (라벨/검증/재생 로직 공유)
+const mobileCtaBtn = document.getElementById('btn-mobile-cta');
+if (mobileCtaBtn && sbRestartBtn) {
+  mobileCtaBtn.addEventListener('click', () => sbRestartBtn.click());
+}
 
 // 새 사이드바 3단계 — 영상 실행 버튼
 if (sbRestartBtn) sbRestartBtn.addEventListener('click', () => {

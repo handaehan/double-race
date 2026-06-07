@@ -108,14 +108,17 @@
         <div id="series-list"></div>
       </section>
 
-      <!-- ─── 3단계: 영상 생성 ─── -->
-      <section class="step">
-        <h3 class="step-h"><span class="step-num">3</span>영상 생성</h3>
+      <!-- ─── 3단계: 투자 결과 보기 (메인 CTA) ─── -->
+      <section class="step step-cta">
+        <h3 class="step-h">
+          <span class="step-num">3</span>
+          <span data-mode-text="investment=투자 결과 보기|sports=골 레이스 시작|ranking=레이스 시작">투자 결과 보기</span>
+        </h3>
 
-        <button id="btn-restart-play" type="button" class="action primary">
+        <button id="btn-restart-play" type="button" class="action primary cta-hero">
           ▶ 투자 결과 보기
         </button>
-        <div class="field-row">
+        <div class="field-row cta-subactions">
           <button id="btn-sb-play"  type="button" class="action half">▶ 다시 보기</button>
           <button id="btn-sb-pause" type="button" class="action half">⏸ 일시정지</button>
         </div>
@@ -306,6 +309,18 @@
     </section>
 
   </main>
+
+  <!-- ======================================== -->
+  <!-- 📱 모바일 전용 sticky CTA — 하단 고정       -->
+  <!-- ======================================== -->
+  <!-- 데스크탑(>767px) 에선 CSS 가 display:none.
+       모바일에서는 사이드바 위치와 무관하게 항상 1탭으로 ▶ 투자 결과 보기 실행.
+       JS 가 main CTA (btn-restart-play) 와 라벨/클릭을 미러링. -->
+  <div class="mobile-cta-bar" id="mobileCtaBar">
+    <button type="button" id="btn-mobile-cta" class="mobile-cta">
+      ▶ 투자 결과 보기
+    </button>
+  </div>
 
   <!-- ======================================== -->
   <!-- 📦 DB 모달 — 종목 데이터 관리              -->
