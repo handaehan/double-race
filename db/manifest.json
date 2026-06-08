@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-05-31T16:58:30+09:00",
+  "updated_at": "2026-06-08T15:28:04+09:00",
   "tickers": {
     "sp500": {
       "name": "S&P500",
@@ -739,6 +739,127 @@
       "first": "2007-04",
       "last": "2026-05",
       "count": 230,
+      "status": "ok"
+    },
+    "mstr": {
+      "name": "스트래티지",
+      "symbol": "mstr",
+      "ticker": "MSTR",
+      "category": "stock",
+      "source": "yfinance",
+      "first": "2000-01",
+      "last": "2026-06",
+      "count": 318,
+      "status": "ok"
+    },
+    "tsm": {
+      "name": "TSMC",
+      "symbol": "tsm",
+      "ticker": "TSM",
+      "category": "stock",
+      "source": "yfinance",
+      "first": "2000-01",
+      "last": "2026-06",
+      "count": 318,
+      "status": "ok"
+    },
+    "asml": {
+      "name": "ASML",
+      "symbol": "asml",
+      "ticker": "ASML",
+      "category": "stock",
+      "source": "yfinance",
+      "first": "2000-01",
+      "last": "2026-06",
+      "count": 318,
+      "status": "ok"
+    },
+    "arm": {
+      "name": "ARM",
+      "symbol": "arm",
+      "ticker": "ARM",
+      "category": "stock",
+      "source": "yfinance",
+      "first": "2023-09",
+      "last": "2026-06",
+      "count": 34,
+      "status": "ok"
+    },
+    "spy": {
+      "name": "SPY",
+      "symbol": "spy",
+      "ticker": "SPY",
+      "category": "etf",
+      "source": "yfinance",
+      "first": "2000-01",
+      "last": "2026-06",
+      "count": 318,
+      "status": "ok"
+    },
+    "ivv": {
+      "name": "IVV",
+      "symbol": "ivv",
+      "ticker": "IVV",
+      "category": "etf",
+      "source": "yfinance",
+      "first": "2000-05",
+      "last": "2026-06",
+      "count": 314,
+      "status": "ok"
+    },
+    "dia": {
+      "name": "DIA",
+      "symbol": "dia",
+      "ticker": "DIA",
+      "category": "etf",
+      "source": "yfinance",
+      "first": "2000-01",
+      "last": "2026-06",
+      "count": 318,
+      "status": "ok"
+    },
+    "iwm": {
+      "name": "IWM",
+      "symbol": "iwm",
+      "ticker": "IWM",
+      "category": "etf",
+      "source": "yfinance",
+      "first": "2000-05",
+      "last": "2026-06",
+      "count": 314,
+      "status": "ok"
+    },
+    "vig": {
+      "name": "VIG",
+      "symbol": "vig",
+      "ticker": "VIG",
+      "category": "etf",
+      "source": "yfinance",
+      "first": "2006-05",
+      "last": "2026-06",
+      "count": 242,
+      "status": "ok"
+    },
+    "ibit": {
+      "name": "IBIT",
+      "symbol": "ibit",
+      "ticker": "IBIT",
+      "category": "etf",
+      "source": "yfinance",
+      "first": "2024-01",
+      "last": "2026-06",
+      "count": 30,
+      "status": "ok"
+    },
+    "fbtc": {
+      "name": "FBTC",
+      "symbol": "fbtc",
+      "ticker": "FBTC",
+      "category": "etf",
+      "source": "yfinance",
+      "first": "2024-01",
+      "last": "2026-06",
+      "count": 30,
       "status": "ok"
     }
   }

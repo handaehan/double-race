@@ -1416,6 +1416,10 @@ const SERIES_META = {
   mcd:        { color: '#FFC72C' },   // McDonald's yellow
   visa:       { color: '#1A4FE0' },   // Visa blue (밝게 보정)
   mastercard: { color: '#FF5F00' },   // Mastercard orange
+  mstr:       { color: '#F7931A' },   // Strategy (Bitcoin treasury) — BTC orange
+  tsm:        { color: '#CC0000' },   // TSMC red
+  asml:       { color: '#0066B2' },   // ASML blue
+  arm:        { color: '#0091BD' },   // Arm cyan-blue
 
   // 한국 주식
   samsung:    { color: '#1428A0' },   // Samsung blue
@@ -1446,6 +1450,13 @@ const SERIES_META = {
   upro:       { color: '#E84E1B' },
   jepi:       { color: '#2E7D32' },   // 배당 green
   jepq:       { color: '#43A047' },
+  spy:        { color: '#E64A19' },   // SPDR orange-red
+  ivv:        { color: '#0033A0' },   // iShares blue
+  dia:        { color: '#1A237E' },   // SPDR Dow deep blue
+  iwm:        { color: '#7E57C2' },   // Russell 2000 purple
+  vig:        { color: '#C8102E' },   // Vanguard red
+  ibit:       { color: '#0033A0' },   // iShares Bitcoin (iShares blue)
+  fbtc:       { color: '#00853E' },   // Fidelity green
 
   // 암호화폐
   btc:        { color: '#F7931A' },   // Bitcoin orange
@@ -1500,6 +1511,10 @@ const SYMBOL_LABELS = {
   mcd:     { ko: '맥도날드',         en: "McDonald's" },
   visa:    { ko: '비자',             en: 'Visa' },
   mastercard: { ko: '마스터카드',    en: 'Mastercard' },
+  mstr:    { ko: '스트래티지',       en: 'Strategy' },
+  tsm:     { ko: 'TSMC',             en: 'TSMC' },
+  asml:    { ko: 'ASML',             en: 'ASML' },
+  arm:     { ko: 'ARM',              en: 'Arm' },
 
   // 한국 주식
   samsung:    { ko: '삼성전자',         en: 'Samsung Electronics' },
@@ -1530,6 +1545,14 @@ const SYMBOL_LABELS = {
   upro: { ko: 'UPRO', en: 'UPRO' },
   jepi: { ko: 'JEPI', en: 'JEPI' },
   jepq: { ko: 'JEPQ', en: 'JEPQ' },
+  spy:  { ko: 'SPY',  en: 'SPY'  },
+  ivv:  { ko: 'IVV',  en: 'IVV'  },
+  dia:  { ko: 'DIA',  en: 'DIA'  },
+  iwm:  { ko: 'IWM',  en: 'IWM'  },
+  vig:  { ko: 'VIG',  en: 'VIG'  },
+  // 현물 BTC ETF
+  ibit: { ko: 'IBIT', en: 'IBIT' },
+  fbtc: { ko: 'FBTC', en: 'FBTC' },
 
   // 암호화폐
   btc:     { ko: '비트코인',  en: 'Bitcoin' },
@@ -4173,6 +4196,10 @@ const SERIES_TAGS = {
   mcd:               ['#맥도날드', '#MCD',      '#소비재'],
   visa:              ['#비자',     '#VISA',     '#결제'],
   mastercard:        ['#마스터카드','#MA',      '#결제'],
+  mstr:              ['#스트래티지', '#MSTR',   '#비트코인보유'],
+  tsm:               ['#TSMC',     '#반도체',   '#TSM'],
+  asml:              ['#ASML',     '#반도체',   '#노광장비'],
+  arm:               ['#ARM',      '#반도체',   '#모바일AP'],
 
   // 한국 주식
   samsung:           ['#삼성전자', '#삼성',     '#국내주식'],
@@ -4203,6 +4230,13 @@ const SERIES_TAGS = {
   upro:              ['#UPRO',    '#SP500_3배', '#레버리지'],
   jepi:              ['#JEPI',    '#월배당ETF'],
   jepq:              ['#JEPQ',    '#월배당ETF'],
+  spy:               ['#SPY',     '#SP500ETF', '#미국ETF'],
+  ivv:               ['#IVV',     '#SP500ETF', '#미국ETF'],
+  dia:               ['#DIA',     '#다우ETF',  '#미국ETF'],
+  iwm:               ['#IWM',     '#러셀2000', '#소형주ETF'],
+  vig:               ['#VIG',     '#배당성장ETF', '#미국ETF'],
+  ibit:              ['#IBIT',    '#비트코인ETF', '#현물BTC'],
+  fbtc:              ['#FBTC',    '#비트코인ETF', '#현물BTC'],
 
   // 암호화폐
   bitcoin:           ['#비트코인', '#BTC',      '#암호화폐'],
@@ -4255,6 +4289,10 @@ const SERIES_TAGS_EN = {
   mcd:     ['#McDonalds', '#MCD'],
   visa:    ['#Visa', '#VISA', '#Payments'],
   mastercard: ['#Mastercard', '#MA', '#Payments'],
+  mstr:    ['#Strategy', '#MSTR', '#BitcoinTreasury'],
+  tsm:     ['#TSMC', '#TSM', '#Semiconductors'],
+  asml:    ['#ASML', '#Semiconductors', '#Lithography'],
+  arm:     ['#Arm', '#ARM', '#Semiconductors'],
   samsung: ['#Samsung', '#SamsungElectronics', '#KoreaStocks'],
   skhynix: ['#SKHynix', '#Semiconductors'],
   naver:   ['#NAVER', '#KoreaStocks'],
@@ -4270,6 +4308,13 @@ const SERIES_TAGS_EN = {
   upro:    ['#UPRO', '#SP500Leveraged'],
   jepi:    ['#JEPI', '#MonthlyIncome'],
   jepq:    ['#JEPQ', '#MonthlyIncome'],
+  spy:     ['#SPY', '#SP500ETF', '#USEtf'],
+  ivv:     ['#IVV', '#SP500ETF', '#USEtf'],
+  dia:     ['#DIA', '#DowETF', '#USEtf'],
+  iwm:     ['#IWM', '#Russell2000', '#SmallCapETF'],
+  vig:     ['#VIG', '#DividendGrowth', '#USEtf'],
+  ibit:    ['#IBIT', '#BitcoinETF', '#SpotBTC'],
+  fbtc:    ['#FBTC', '#BitcoinETF', '#SpotBTC'],
   bitcoin: ['#Bitcoin', '#BTC', '#Crypto'],
   btc:     ['#Bitcoin', '#BTC', '#Crypto'],
   eth:     ['#Ethereum', '#ETH', '#Crypto'],
