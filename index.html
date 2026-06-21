@@ -38,8 +38,10 @@
     <!-- 좌측 — 3단계 + 고급 설정                 -->
     <!-- ======================================== -->
     <aside class="sidebar">
+      <!-- 사이드바 영역 명칭 라벨 — 스크린샷에서 위치 식별용 (v1.0.0) -->
+      <div class="tab-label tab-label-sidebar">⚙️ SETTINGS TAB</div>
       <div class="brand-row">
-        <h2 class="brand">📊 투자 레이스</h2>
+        <h2 class="brand">📊 투자 레이스 <span class="app-version" id="appVersion"></span></h2>
         <button id="btn-open-db" type="button" class="db-btn" title="데이터베이스 관리">
           📦 데이터
         </button>
@@ -105,10 +107,17 @@
         <h3 class="step-h">
           <span class="step-num">2</span>비교 종목 선택
         </h3>
-        <!-- 메인 진입 버튼 — 모달 열면 멀티 선택 가능. 현재 선택 개수 표시. -->
-        <button id="btn-pick-series" type="button" class="action accent series-pick-btn">
-          📊 비교 종목 선택 <span class="series-pick-count" id="seriesPickCount">0개</span>
-        </button>
+        <!-- 메인 진입 버튼 — 모달 열면 멀티 선택 가능. 현재 선택 개수 표시.
+             옆 작은 reset 버튼은 localStorage 클리어 + 첫 시리즈 1개로 비움. v1.0.0 -->
+        <div class="pick-row">
+          <button id="btn-pick-series" type="button" class="action accent series-pick-btn">
+            📊 종목 선택 <span class="series-pick-count" id="seriesPickCount">0개</span>
+          </button>
+          <button id="btn-reset-series" type="button" class="action series-reset-btn"
+                  title="선택 초기화 — 직전 세션 기록 삭제 후 새로 선택">
+            ↺
+          </button>
+        </div>
         <!-- 선택된 종목 목록 — 색/아이콘 변경, 개별 삭제만 가능. 심볼 자체는 모달에서만 변경. -->
         <div id="series-list"></div>
       </section>
@@ -207,6 +216,8 @@
     <!-- 우측 — 9:16 프레임                        -->
     <!-- ======================================== -->
     <section class="preview">
+      <!-- 프리뷰 영역 명칭 라벨 — 스크린샷에서 위치 식별용 (v1.0.0) -->
+      <div class="tab-label tab-label-preview">📺 PREVIEW TAB</div>
 
       <!-- 프레임 상단 도구 — 언어 토글 + 녹화 영역 토글.
            언어: Shorts 출력물(프레임/콘텐츠 도구)만 영문화. 사이드바는 ko 유지.
@@ -269,11 +280,7 @@
             </div>
           </div>
 
-          <!-- 🚀 RACE START 짧은 플래시 — startRace 호출 시 0.4초 펄스 후 fade out.
-             즉시 race 시작 (카운트다운 없음). Shorts 초반 이탈 방지. -->
-          <div class="race-start-flash" id="raceStartFlash" aria-hidden="true">
-            <span class="rsf-text" id="raceStartFlashText">RACE START</span>
-          </div>
+          <!-- (RACE START 플래시 제거됨 — 사용자 요청 v1.0.0) -->
 
           <!-- 📱 Shorts UI Wireframe Overlay — frame.show-safe 일 때만 표시.
                YouTube Shorts 실제 앱 UI 를 반투명 흰색 wireframe 으로 모사 — 차트 위에

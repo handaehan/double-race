@@ -3,29 +3,101 @@
    ========================================= */
 
 :root {
-  --bg-deep:    #060608;
-  --bg-base:    #0a0a0d;
-  --bg-elev:    rgba(255, 255, 255, 0.035);
-  --bg-elev-2:  rgba(255, 255, 255, 0.06);
-  --border:     rgba(255, 255, 255, 0.07);
-  --border-2:   rgba(255, 255, 255, 0.12);
+  /* v1.0.0 디자인 시스템 리프레시 — Berriz 스타일 미니멀 모노크롬.
+     앱 chrome(사이드바/버튼/패널)은 흑백+한 가지 cyan 액센트.
+     데이터 시각화(시리즈 라인/끝점)는 브랜드 색 그대로 유지. */
+  --bg-deep:    #050507;
+  --bg-base:    #0b0c10;          /* 살짝 푸른 다크 — 순수 검정보다 톤이 차분 */
+  --bg-elev:    rgba(255, 255, 255, 0.04);
+  --bg-elev-2:  rgba(255, 255, 255, 0.07);
+  --border:     rgba(255, 255, 255, 0.08);
+  --border-2:   rgba(255, 255, 255, 0.14);
   --text:       #ffffff;
   --text-2:     rgba(255, 255, 255, 0.78);
   --text-3:     rgba(255, 255, 255, 0.55);
   --text-4:     rgba(255, 255, 255, 0.38);
-  --accent:     #FFD54F;
-  --accent-2:   #FF8A65;
+  /* ⭐ 신규 통합 액센트 — Berriz 톤 시안. 보라/핑크 액센트 자리 대체. */
+  --accent:     #60D7FF;          /* cyan — Berriz IDID 로고 톤 */
+  --accent-2:   #2BB8F0;          /* hover/active 톤 */
+  --accent-soft:rgba(96, 215, 255, 0.18);
+  /* 데이터 컬러 유지 (시리즈 식별용) */
   --pink:       #EC407A;
   --blue:       #4FC3F7;
   --green:      #66BB6A;
   --red:        #EF5350;
-  --glow:       0 0 0 1px rgba(255, 213, 79, 0.35),
-                0 0 18px  rgba(255, 213, 79, 0.22),
-                0 0 36px  rgba(255, 213, 79, 0.08);
+  --glow:       0 0 0 1px rgba(96, 215, 255, 0.35),
+                0 0 14px rgba(96, 215, 255, 0.18);
 }
 
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
+
+/* ═══════════════════════════════════════════════════════════
+   v1.0.0 — 영역 명칭 라벨 (사이드바 / 프리뷰 / 모달 등)
+   스크린샷에서 위치 식별용. 모바일에선 작게.
+   ═══════════════════════════════════════════════════════════ */
+.tab-label {
+  position: absolute;
+  top: 8px;
+  z-index: 4;
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.62);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  pointer-events: none;
+  user-select: none;
+  white-space: nowrap;
+}
+.tab-label-sidebar { left: 14px; }
+.tab-label-preview {
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(11, 12, 16, 0.85);
+  color: rgba(255, 255, 255, 0.7);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+/* 버전 뱃지 — 브랜드 옆 */
+.app-version {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+  background: var(--accent-soft);
+  padding: 1px 6px;
+  border-radius: 4px;
+  vertical-align: middle;
+}
+
+/* Pick row — 종목 선택 메인 버튼 + Reset 버튼 가로 배치 */
+.pick-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.series-pick-btn { flex: 1 1 auto; margin-bottom: 0 !important; }
+.series-reset-btn {
+  flex: 0 0 auto;
+  width: 42px;
+  padding: 0 !important;
+  font-size: 17px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.7);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+}
+.series-reset-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  border-color: rgba(96, 215, 255, 0.4);
+}
 
 body {
   /* 사이트(배경) 영역 — 라이트 톤. 영상 캔버스(.frame) 의 다크 경계가 한눈에 보이도록.
@@ -84,16 +156,15 @@ html, body { color-scheme: dark; }
 
 /* 좌측 (모바일: 하단) 설정 패널 — 솔리드 다크 (라이트 배경에서 명확히 분리되는 툴 패널) */
 .sidebar {
-  width: 100%;                  /* 모바일: 풀 가로폭 */
+  position: relative;             /* v1.0.0 — tab-label anchor */
+  width: 100%;                    /* 모바일: 풀 가로폭 */
   flex-shrink: 0;
-  background: #0a0a0d;
+  background: #0b0c10;            /* v1.0.0 차분한 푸른 다크 */
   border-top: 1px solid rgba(255, 255, 255, 0.06);
-  padding: 16px clamp(14px, 4vw, 20px) 12px;
+  padding: 36px clamp(14px, 4vw, 20px) 12px;  /* 상단 +20px : tab-label 위치 */
   display: flex;
   flex-direction: column;
   gap: 4px;
-  /* sticky 미적용 (모바일에서 sticky 는 키보드 띄울 때 어색함) */
-  /* 모바일 성능: blur 는 데스크탑에서만 적용 (아래 @media) */
 }
 
 /* PC (≥1200px) — 좌우 2열 + 사이드바 sticky + 글래스 효과 */
@@ -1218,24 +1289,27 @@ button.action.accent:hover {
   border-color: rgba(255, 255, 255, 0.24);
 }
 
-/* primary — 메인 CTA (영상 생성 ▶ 투자 결과 보기). 유일한 노란 버튼 */
+/* primary — 메인 CTA (v1.0.0 미니멀 리프레시).
+   노란 그라데이션 → 클린 화이트 위 검은 텍스트, 굵은 sans-serif.
+   Berriz 톤 (단색 + 명확한 대비). */
 button.action.primary {
-  background: linear-gradient(135deg, #FFD54F 0%, #FFAA50 100%);
-  color: #1a0e00;
+  background: #ffffff;
+  color: #0b0c10;
   border: none;
   font-size: 14.5px;
   font-weight: 800;
   padding: 13px 14px;
-  letter-spacing: -0.3px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
   box-shadow:
-    0 4px 16px rgba(255, 170, 80, 0.22),
-    0 1px 0 rgba(255, 255, 255, 0.35) inset;
+    0 4px 14px rgba(0, 0, 0, 0.25),
+    0 0 0 1px rgba(255, 255, 255, 0.06);
 }
 button.action.primary:hover {
-  filter: brightness(1.06);
+  background: #f0f0f4;
   box-shadow:
-    0 6px 22px rgba(255, 170, 80, 0.32),
-    0 1px 0 rgba(255, 255, 255, 0.45) inset;
+    0 6px 18px rgba(0, 0, 0, 0.30),
+    0 0 0 1px rgba(96, 215, 255, 0.35);
 }
 
 /* ───────────────────────────────────────────────
@@ -1284,15 +1358,17 @@ button.action.primary:hover {
     cursor: pointer;
     transition: transform 0.08s ease, filter 0.15s ease, box-shadow 0.15s ease;
   }
-  /* 좌측 — 메인 재생 토글 (노란 그라데이션, 더 큰 비중) */
+  /* 좌측 — 메인 재생 토글 (v1.0.0 미니멀: white pill) */
   .mobile-cta-primary {
     flex: 1 1 0;
     min-width: 0;
-    color: #1a0e00;
-    background: linear-gradient(135deg, #FFD54F 0%, #FFAA50 100%);
+    color: #0b0c10;
+    background: #ffffff;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
     box-shadow:
-      0 6px 22px rgba(255, 170, 80, 0.40),
-      0 1px 0 rgba(255, 255, 255, 0.45) inset;
+      0 6px 22px rgba(0, 0, 0, 0.35),
+      0 0 0 1px rgba(255, 255, 255, 0.06);
   }
   /* 우측 — 보조 처음부터 (다크 톤, 좁은 폭) */
   .mobile-cta-secondary {
@@ -1837,12 +1913,13 @@ button.ghost.ghost-warn:hover {
    우측 미리보기 (모바일: 하단 스택)
    ========================================= */
 .preview {
+  position: relative;            /* v1.0.0 — tab-label anchor */
   flex: 1 1 auto;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: clamp(12px, 4vw, 20px);
+  padding: 36px clamp(12px, 4vw, 20px) clamp(12px, 4vw, 20px);  /* 상단 +20px */
   gap: 14px;
   min-width: 0;
 }
@@ -2293,7 +2370,7 @@ body.hide-brand .brand-watermark { display: none; }
    parent 의 opacity 는 제거 (color override 가 dimming 되지 않도록 — 가독성 우선) */
 .subtitle {
   text-align: center;
-  color: #FF3B30;                           /* fallback (사용자 직접 입력 시) */
+  color: rgba(255, 255, 255, 0.85);          /* v1.0.0 — 빨강 → 흰톤 */
   font-size: clamp(13px, 2.6vw, 19px);
   font-weight: 600;
   letter-spacing: -0.2px;

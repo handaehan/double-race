@@ -18,6 +18,11 @@ const DEFAULT_COLORS = [
 ];
 
 const MAX_SERIES = 6;
+
+/* 📌 APP VERSION — 사이트 업데이트마다 1.0.X 패치 번호 증가.
+   브랜드 옆에 작게 표시. 사용자가 자기 화면에서 현재 버전 확인 가능.
+   CHANGELOG 는 git commit log 참조. */
+const APP_VERSION = 'v1.0.0';
 const FINISH_GLOW_DURATION = 2600;
 
 /* =========================================================
@@ -2956,31 +2961,12 @@ function startRace() {
   // 4) progress=0 상태 즉시 반영
   try { render(); } catch (e) { console.error('[RACE] initial render 실패', e); }
 
-  // 4-b) ⚡ RACE START 짧은 플래시 (0.42s) — 카운트다운 없이 즉시 race 시작과 동시 표시
-  _flashRaceStart();
+  // (이전 RACE START 플래시는 거슬린다고 사용자 요청에 따라 제거 — 즉시 tick)
 
   // 5) ⭐ 직접 tick 시작 — play() 우회. 동기 경로 보장.
   playing  = true;
   lastTime = 0;
-  console.log('[RACE] tick 시작');
   requestAnimationFrame(tick);
-}
-
-/* 'RACE START' 짧은 인트로 플래시 — 즉시 race 시작 (카운트다운 X).
-   CSS 애니메이션이 0.42s 후 자동 fade. 클래스만 토글, 끝나면 제거. */
-function _flashRaceStart() {
-  const el = document.getElementById('raceStartFlash');
-  if (!el) return;
-  const txt = el.querySelector('.rsf-text');
-  if (txt) {
-    const lang = (typeof _currentLang === 'function') ? _currentLang() : 'ko';
-    txt.textContent = (lang === 'en') ? 'RACE START' : 'RACE START';
-  }
-  // 이전 잔여 클래스 제거 후 강제 reflow → 매번 애니메이션 재시작
-  el.classList.remove('is-active');
-  void el.offsetWidth;
-  el.classList.add('is-active');
-  setTimeout(() => el.classList.remove('is-active'), 480);
 }
 
 // 새 사이드바 3단계 — 영상 실행 버튼 (메인 CTA + 모바일 sticky restart 공용 핸들러)
@@ -3312,6 +3298,62 @@ function _renderPicker() {
 
 /* 멀티 선택 결과를 RACE.series 에 commit. 기존 시리즈의 color/icon 보존,
    새 종목은 default state 로 추가. 선택 순서 = 노출 순서. */
+/* 🗂️ 시리즈 선택 localStorage 영속 (v1.0.0)
+   기본 RACE.series 는 [S&P500, 코스피] 인데, 사용자가 한 번이라도 다른 종목 선택했으면
+   다음 페이지 진입에 그 선택이 복원되게 함. Reset 버튼으로 명시 초기화 가능. */
+const SERIES_STORAGE_KEY = 'ir_series_v1';
+function _persistSeriesSelection() {
+  try {
+    const data = RACE.series.map(s => ({
+      symbol: s.symbol,
+      color:  s.color,
+      icon:   s.icon || { type: 'auto', value: null }
+    }));
+    localStorage.setItem(SERIES_STORAGE_KEY, JSON.stringify(data));
+  } catch {}
+}
+function _restoreSeriesSelection() {
+  try {
+    const raw = localStorage.getItem(SERIES_STORAGE_KEY);
+    if (!raw) return false;
+    const data = JSON.parse(raw);
+    if (!Array.isArray(data) || !data.length) return false;
+    RACE.series = data.slice(0, MAX_SERIES).map((s, i) => {
+      const entry = MANIFEST.tickers && MANIFEST.tickers[s.symbol];
+      return {
+        name:   entry ? entry.name : (s.symbol || ''),
+        symbol: s.symbol || null,
+        color:  s.color || DEFAULT_COLORS[i % DEFAULT_COLORS.length],
+        icon:   s.icon  || { type: 'auto', value: null },
+        values: []
+      };
+    });
+    return true;
+  } catch { return false; }
+}
+
+/* 사이드바 '↺ 종목 초기화' — localStorage 클리어 + 시리즈 비우고 picker 열기. */
+async function resetSeriesSelection() {
+  try { localStorage.removeItem(SERIES_STORAGE_KEY); } catch {}
+  // 기본 첫 시리즈 한 개만 남기고 → 사용자가 picker 로 자유 선택하도록
+  RACE.series = [{
+    name: '', symbol: null, color: DEFAULT_COLORS[0],
+    icon: { type: 'auto', value: null }, values: []
+  }];
+  playing = false; progress = 0; lastTime = 0; finishedAt = null;
+  yMinSmooth = null; yMaxSmooth = null; xMaxSmooth = null;
+  if (frameEl) frameEl.classList.remove('finished');
+
+  await loadSeriesData();
+  _refreshSeriesColors();
+  syncTitleFromSeries();
+  refreshDisplaySeries();
+  renderSeriesRows();
+  render();
+  // 즉시 picker 모달 열어서 사용자 새 선택 유도
+  if (typeof openSymbolPicker === 'function') openSymbolPicker();
+}
+
 async function applyMultiSelection() {
   const syms = Array.from(_pickerCtx.selected).slice(0, MAX_SERIES);
   if (!syms.length) return;
@@ -3328,6 +3370,7 @@ async function applyMultiSelection() {
       values: []
     };
   });
+  _persistSeriesSelection();   // localStorage 저장
   _closeSymbolPicker();
 
   // 새 시리즈 세트로 교체했으므로 play 상태 완전 초기화 (이전 race 잔여 상태 제거).
@@ -3523,9 +3566,13 @@ function addSeries() {
 // 레거시: btn-add-series 는 제거됨 (멀티 선택 패턴으로 통합). 안전 가드만 유지.
 if (addSeriesBtn) addSeriesBtn.addEventListener('click', addSeries);
 
-// 신규 메인 진입 — 사이드바 02 단계 '📊 비교 종목 선택' 버튼 → 멀티 선택 picker 열기
+// 신규 메인 진입 — 사이드바 02 단계 '📊 종목 선택' 버튼 → 멀티 선택 picker 열기
 const pickSeriesBtn = document.getElementById('btn-pick-series');
 if (pickSeriesBtn) pickSeriesBtn.addEventListener('click', () => openSymbolPicker());
+
+// v1.0.0 — 종목 선택 초기화 버튼 (localStorage 클리어 + picker 자동 열기)
+const resetSeriesBtn = document.getElementById('btn-reset-series');
+if (resetSeriesBtn) resetSeriesBtn.addEventListener('click', resetSeriesSelection);
 
 /* =========================================================
    인기 비교 주제 프리셋 — 한 클릭으로 종목/기간/투자금 적용
@@ -4708,12 +4755,13 @@ const I18N = {
     goals:        (n) => `${n.toLocaleString()}골`,
 
     /* 버튼 / UI */
-    ctaInvestment:'▶ 투자 결과 보기',
-    ctaSports:    '▶ 골 레이스 시작',
-    ctaRanking:   '▶ 레이스 시작',
-    ctaRate:      '▶ 출산률 비교 시작',
-    ctaAbsolute:  '▶ 집값 비교 시작',
-    ctaCount:     '▶ 구독자 레이스 시작',
+    /* v1.0.0 — CTA 라벨 단순 통일. 모든 모드 'RACE START' 영문. 컨텍스트는 제목/부제가 전달. */
+    ctaInvestment:'▶ RACE START',
+    ctaSports:    '▶ RACE START',
+    ctaRanking:   '▶ RACE START',
+    ctaRate:      '▶ RACE START',
+    ctaAbsolute:  '▶ RACE START',
+    ctaCount:     '▶ RACE START',
     saveBtn:      '🎬 그래프 녹화',
     saveBusy:     '영상 생성중...',
     copyBtn:      '복사',
@@ -4772,12 +4820,12 @@ const I18N = {
     principal:    'PRINCIPAL',
     goals:        (n) => `${n.toLocaleString()} goals`,
 
-    ctaInvestment:'▶ Watch Investment Race',
-    ctaSports:    '▶ Start Goal Race',
-    ctaRanking:   '▶ Start Race',
-    ctaRate:      '▶ Compare Fertility Rates',
-    ctaAbsolute:  '▶ Compare Home Prices',
-    ctaCount:     '▶ Start Subscriber Race',
+    ctaInvestment:'▶ RACE START',
+    ctaSports:    '▶ RACE START',
+    ctaRanking:   '▶ RACE START',
+    ctaRate:      '▶ RACE START',
+    ctaAbsolute:  '▶ RACE START',
+    ctaCount:     '▶ RACE START',
     saveBtn:      '🎬 Record Video',
     saveBusy:     'Generating...',
     copyBtn:      'Copy',
@@ -5647,6 +5695,10 @@ window.render = render = function() {
 };
 
 async function init() {
+  // 버전 표시 — 사이드바 브랜드 옆 (v1.0.0)
+  const versionEl = document.getElementById('appVersion');
+  if (versionEl) versionEl.textContent = APP_VERSION;
+
   populateForm();
   bindLiveInputs();
   // 종목 선택 모달 이벤트 사전 바인딩 — 모달 첫 열기 전에 wiring 완료시켜 안전
@@ -5655,6 +5707,8 @@ async function init() {
   /* 새 아키텍처: manifest + per-ticker CSV 자동 로드.
      db/ 폴더에 csv 가 있으면 (정적 호스팅이든 server.py 든) 즉시 적용. */
   await loadManifest();
+  // v1.0.0 — localStorage 에서 직전 세션의 시리즈 선택 복원. 없으면 기본값(S&P+코스피) 유지.
+  _restoreSeriesSelection();
   await loadSeriesData();
   _refreshSeriesColors();  // 브랜드 컬러 자동 적용 (SERIES_META + 로고 추출)
   syncTitleFromSeries();   // 초기 제목도 series 이름 기반 자동 설정
