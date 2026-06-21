@@ -22,7 +22,7 @@ const MAX_SERIES = 6;
 /* 📌 APP VERSION — 사이트 업데이트마다 1.0.X 패치 번호 증가.
    브랜드 옆에 작게 표시. 사용자가 자기 화면에서 현재 버전 확인 가능.
    CHANGELOG 는 git commit log 참조. */
-const APP_VERSION = 'v1.0.0';
+const APP_VERSION = 'v1.0.1';
 const FINISH_GLOW_DURATION = 2600;
 
 /* =========================================================
@@ -1638,11 +1638,13 @@ const SERIES_META = {
   cn_birth:   { color: '#DE2910', defaultIcon: { type: 'emoji', value: '🇨🇳' } },
   jp_birth:   { color: '#FAAB18', defaultIcon: { type: 'emoji', value: '🇯🇵' } },
 
-  // 부동산 (집값) — 4개국, 시각 충돌 없도록 distinct 색
+  // 부동산 (집값) — 시각 충돌 없도록 distinct 색
   us_house:   { color: '#2E7D32', defaultIcon: { type: 'emoji', value: '🇺🇸' } },  // 머니 그린
   hk_house:   { color: '#DE2910', defaultIcon: { type: 'emoji', value: '🇭🇰' } },  // 홍콩 적색
   uk_house:   { color: '#00247D', defaultIcon: { type: 'emoji', value: '🇬🇧' } },  // Union Jack 네이비
   au_house:   { color: '#FFC72C', defaultIcon: { type: 'emoji', value: '🇦🇺' } },  // Aus 골드
+  sg_house:   { color: '#B71C5C', defaultIcon: { type: 'emoji', value: '🇸🇬' } },  // 자주 — HK 적색과 시각 충돌 회피
+  ca_house:   { color: '#FF6E40', defaultIcon: { type: 'emoji', value: '🇨🇦' } },  // 단풍 오렌지 — 다른 빨강과 구분
 
   // YouTube 채널 — 채널별 시각 정체성. 사용자 요청 컬러 매핑 반영.
   yt_mrbeast:    { color: '#FF1A75', defaultIcon: { type: 'emoji', value: '🎬' } },  // MrBeast 핑크
@@ -1762,6 +1764,8 @@ const SYMBOL_LABELS = {
   hk_house: { ko: '홍콩',       en: 'Hong Kong' },
   uk_house: { ko: '영국',       en: 'UK'        },
   au_house: { ko: '시드니',     en: 'Sydney'    },
+  sg_house: { ko: '싱가포르',   en: 'Singapore' },
+  ca_house: { ko: '캐나다',     en: 'Canada'    },
 
   // YouTube 채널 — 채널명은 원래 영문이라 ko/en 동일
   yt_mrbeast:    { ko: 'MrBeast',           en: 'MrBeast'           },
@@ -3602,7 +3606,13 @@ const PRESETS = [
     amount: 0, start: '2017-12' },
   { icon: '📺🏆',  label: 'Top YouTube Channels',
     series: ['yt_mrbeast', 'yt_tseries', 'yt_pewdiepie', 'yt_cocomelon', 'yt_likenastya'],
-    amount: 0, start: '2022-08' }
+    amount: 0, start: '2022-08' },
+
+  /* 🏠 글로벌 집값 — 1995-2026 (Asian Crisis → GFC → COVID 폭등 전체 사이클).
+     "House Prices Are Out Of Control" 후크. value_mode='absolute' 자동 인식 → DCA 우회. */
+  { icon: '🔥🏠',  label: 'House Prices Are Out Of Control',
+    series: ['hk_house', 'sg_house', 'us_house', 'uk_house', 'ca_house'],
+    amount: 0, start: '1995-01' }
 ];
 
 function _presetIsReady(p) {
@@ -5079,6 +5089,8 @@ const SERIES_TAGS = {
   hk_house:          ['#홍콩집값', '#부동산',   '#홍콩부동산'],
   uk_house:          ['#영국집값', '#부동산',   '#런던집값'],
   au_house:          ['#호주집값', '#부동산',   '#시드니집값'],
+  sg_house:          ['#싱가포르집값', '#부동산', '#싱가포르부동산'],
+  ca_house:          ['#캐나다집값', '#부동산', '#토론토집값'],
 
   // YouTube
   yt_mrbeast:        ['#MrBeast', '#유튜브', '#유튜버'],
@@ -5172,6 +5184,8 @@ const SERIES_TAGS_EN = {
   hk_house:['#HongKongHousing', '#RealEstate', '#PropertyMarket'],
   uk_house:['#UKHousing', '#LondonHomePrice', '#RealEstate'],
   au_house:['#SydneyHousing', '#AustralianRealEstate', '#HomePrice'],
+  sg_house:['#SingaporeHousing', '#PropertyMarket', '#RealEstate'],
+  ca_house:['#CanadaHousing', '#TorontoHomePrice', '#RealEstate'],
   yt_mrbeast:    ['#MrBeast', '#YouTube', '#YouTubers'],
   yt_tseries:    ['#TSeries', '#YouTube', '#IndianMusic'],
   yt_pewdiepie:  ['#PewDiePie', '#YouTube', '#Gaming'],

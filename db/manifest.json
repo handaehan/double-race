@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-06-21T11:38:11+09:00",
+  "updated_at": "2026-06-21T20:51:44+09:00",
   "tickers": {
     "sp500": {
       "name": "S&P500",
@@ -1264,6 +1264,32 @@
       "count": 138,
       "status": "ok",
       "note": "Transfermarkt squad total market value in € millions. Annual values linearly interpolated to monthly. Approximate from public sources."
+    },
+    "sg_house": {
+      "name": "싱가포르 집값",
+      "symbol": "sg_house",
+      "ticker": null,
+      "category": "realestate",
+      "source": "manual",
+      "value_mode": "absolute",
+      "first": "1995-01",
+      "last": "2026-06",
+      "count": 378,
+      "status": "ok",
+      "note": "Avg home price in USD (annual → monthly interp). 2025-2026 preliminary."
+    },
+    "ca_house": {
+      "name": "캐나다 집값",
+      "symbol": "ca_house",
+      "ticker": null,
+      "category": "realestate",
+      "source": "manual",
+      "value_mode": "absolute",
+      "first": "1995-01",
+      "last": "2026-06",
+      "count": 378,
+      "status": "ok",
+      "note": "Avg home price in USD (annual → monthly interp). 2025-2026 preliminary."
     }
   }
 }
