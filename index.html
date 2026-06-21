@@ -92,19 +92,24 @@
         </div>
 
         <!-- investment-only: sports/ranking 모드에선 CSS 가 자동 hide.
-             DOM 제거 X — investment 복귀 시 즉시 원복 -->
+             DOM 제거 X — investment 복귀 시 즉시 원복.
+             단위: USD ($). KO 출력 시 자동 × 1000 → 원 환산. -->
         <label class="field investment-only">
-          <span>매월 투자금 (원)</span>
-          <input id="inp-sim-amount" type="number" min="0" step="any" value="300000" />
+          <span>매월 투자금 ($)</span>
+          <input id="inp-sim-amount" type="number" min="0" step="any" value="300" />
         </label>
       </section>
 
-      <!-- ─── 2단계: 비교 종목 선택 ─── -->
+      <!-- ─── 2단계: 비교 종목 선택 (멀티 선택 패턴) ─── -->
       <section class="step">
         <h3 class="step-h">
           <span class="step-num">2</span>비교 종목 선택
-          <button id="btn-add-series" type="button" class="ghost mini header-action">＋ 비교 추가</button>
         </h3>
+        <!-- 메인 진입 버튼 — 모달 열면 멀티 선택 가능. 현재 선택 개수 표시. -->
+        <button id="btn-pick-series" type="button" class="action accent series-pick-btn">
+          📊 비교 종목 선택 <span class="series-pick-count" id="seriesPickCount">0개</span>
+        </button>
+        <!-- 선택된 종목 목록 — 색/아이콘 변경, 개별 삭제만 가능. 심볼 자체는 모달에서만 변경. -->
         <div id="series-list"></div>
       </section>
 
@@ -155,7 +160,13 @@
           <label class="check"><input id="inp-show-endlabel" type="checkbox" checked /><span>끝 라벨</span></label>
           <label class="check"><input id="inp-show-overtake" type="checkbox" /><span>추월 이벤트</span></label>
           <label class="check" title="YouTube Shorts UI(좋아요·댓글·공유·채널명) 위험영역을 빨강으로 표시">
-            <input id="inp-show-shorts-safe" type="checkbox" /><span>📱 Shorts Safe</span>
+            <input id="inp-show-shorts-safe" type="checkbox" /><span>🔴 YouTube UI 가림 영역</span>
+          </label>
+          <label class="check" title="화면 녹화 시 드래그할 정확한 영역(9:16 프레임)을 빨강 외곽선·코너 마커로 표시">
+            <input id="inp-show-record-area" type="checkbox" checked /><span>🎯 녹화 영역</span>
+          </label>
+          <label class="check" title="우상단에 채널 로고(브랜드 워터마크) 표시 — 매 영상에 일관된 채널 식별">
+            <input id="inp-show-brand" type="checkbox" checked /><span>🏷️ 브랜드 로고</span>
           </label>
         </div>
       </section>
@@ -197,16 +208,42 @@
     <!-- ======================================== -->
     <section class="preview">
 
-      <!-- 언어 토글 — Shorts 출력물(프레임/콘텐츠 도구)만 영문화. 사이드바는 ko 유지.
-           localStorage(ir_lang) 영속. JS 가 applyLanguageToUI() 로 [data-i18n] 노드 갱신. -->
-      <div class="lang-toggle" role="tablist" aria-label="Output language">
-        <button type="button" class="lt-btn" data-lang="ko" role="tab" aria-selected="true">🌐 한국어</button>
-        <button type="button" class="lt-btn" data-lang="en" role="tab" aria-selected="false">English</button>
+      <!-- 프레임 상단 도구 — 언어 토글 + 녹화 영역 토글.
+           언어: Shorts 출력물(프레임/콘텐츠 도구)만 영문화. 사이드바는 ko 유지.
+           녹화 영역: 빨강 외곽선·코너 마커로 화면 녹화 드래그 영역 가시화.
+           둘 다 localStorage 영속 (ir_lang / ir_show_record_area).
+           ⭐ 녹화 영역 기본값 ON — 첫 진입부터 녹화 가이드 보이도록. -->
+      <div class="frame-tools">
+        <div class="lang-toggle" role="tablist" aria-label="Output language">
+          <button type="button" class="lt-btn" data-lang="ko" role="tab" aria-selected="true">🌐 한국어</button>
+          <button type="button" class="lt-btn" data-lang="en" role="tab" aria-selected="false">English</button>
+        </div>
+        <button type="button" id="recAreaToggleTop" class="rec-toggle" aria-pressed="true"
+                title="녹화 영역 표시 — 화면 녹화 시 드래그할 9:16 프레임을 빨강 외곽선으로 표시">
+          🎯 녹화 영역
+        </button>
       </div>
 
       <!-- export-target: 영상 녹화 시 이 노드가 캡처 대상. 향후 .video-canvas /
            .export-mode 같은 추가 hook 도 이 클래스 기반으로 분기 가능. -->
       <div class="frame export-target" id="frame" aria-label="숏츠 프레임">
+
+        <!-- 🎯 녹화 영역 가이드 — body.show-record-area 일 때만 표시.
+             4코너 viewfinder 마커 + 외곽 라벨. 녹화 대상이 시각적으로 명확해짐. -->
+        <div class="record-guide" aria-hidden="true">
+          <span class="rg-corner rg-tl"></span>
+          <span class="rg-corner rg-tr"></span>
+          <span class="rg-corner rg-bl"></span>
+          <span class="rg-corner rg-br"></span>
+          <span class="rg-label">🔴 녹화 영역 — 화면 녹화 도구를 이 박스에 맞춰주세요</span>
+        </div>
+
+        <!-- 🏷️ 채널 브랜드 워터마크 — 매 영상 좌상단 노출. 파일 누락 시 자동 숨김.
+             교체 방법: assets/brand-logo.png 파일을 채널 로고로 덮어쓰면 끝. -->
+        <img class="brand-watermark" id="brandWatermark"
+             src="assets/brand-logo.png" alt="Double Race"
+             aria-hidden="true"
+             onerror="this.style.display='none'" />
 
         <header class="frame-header">
           <h1 class="title" id="title">제목</h1>
@@ -230,6 +267,94 @@
               <span class="pe-name">원금</span>
               <span class="pe-value"></span>
             </div>
+          </div>
+
+          <!-- 🚀 RACE START 짧은 플래시 — startRace 호출 시 0.4초 펄스 후 fade out.
+             즉시 race 시작 (카운트다운 없음). Shorts 초반 이탈 방지. -->
+          <div class="race-start-flash" id="raceStartFlash" aria-hidden="true">
+            <span class="rsf-text" id="raceStartFlashText">RACE START</span>
+          </div>
+
+          <!-- 📱 Shorts UI Wireframe Overlay — frame.show-safe 일 때만 표시.
+               YouTube Shorts 실제 앱 UI 를 반투명 흰색 wireframe 으로 모사 — 차트 위에
+               '떠 있는 가이드' 처럼. 영상 녹화 시 saveVideo 가 .show-safe 클래스 임시 제거. -->
+          <div class="shorts-ui-wire" aria-hidden="true">
+
+            <!-- 상단 — 검색 / 옵션 아이콘 -->
+            <div class="suw-top">
+              <svg class="suw-ic" viewBox="0 0 24 24" width="22" height="22">
+                <circle cx="11" cy="11" r="6" fill="none" stroke="currentColor" stroke-width="1.6"/>
+                <line x1="15.5" y1="15.5" x2="20" y2="20" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+              </svg>
+              <svg class="suw-ic" viewBox="0 0 24 24" width="22" height="22">
+                <circle cx="12" cy="5" r="1.5" fill="currentColor"/>
+                <circle cx="12" cy="12" r="1.5" fill="currentColor"/>
+                <circle cx="12" cy="19" r="1.5" fill="currentColor"/>
+              </svg>
+            </div>
+
+            <!-- 우측 액션 컬럼 — 채널 / 좋아요 / 싫어요 / 댓글 / 공유 / Remix / 메뉴 / 음악 디스크 -->
+            <div class="suw-right">
+              <div class="suw-action">
+                <div class="suw-avatar"></div>
+                <div class="suw-plus">+</div>
+              </div>
+              <div class="suw-action">
+                <svg class="suw-ic suw-ic-lg" viewBox="0 0 24 24" width="28" height="28">
+                  <path d="M12 21s-7-4.5-9.5-9.2C0 7.5 3.5 4 7 4c2 0 3.7 1 5 2.7C13.3 5 15 4 17 4c3.5 0 7 3.5 4.5 7.8C19 16.5 12 21 12 21z"
+                        fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+                </svg>
+                <div class="suw-count">12K</div>
+              </div>
+              <div class="suw-action">
+                <svg class="suw-ic suw-ic-lg" viewBox="0 0 24 24" width="28" height="28">
+                  <path d="M7 14h2v6l4-8h-3V6L7 14z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" transform="rotate(180 12 12)"/>
+                </svg>
+              </div>
+              <div class="suw-action">
+                <svg class="suw-ic suw-ic-lg" viewBox="0 0 24 24" width="28" height="28">
+                  <path d="M4 5h16v11H8l-4 4V5z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+                </svg>
+                <div class="suw-count">234</div>
+              </div>
+              <div class="suw-action">
+                <svg class="suw-ic suw-ic-lg" viewBox="0 0 24 24" width="28" height="28">
+                  <path d="M14 4v3.5C8.5 7.5 4 11 4 17c2-3 5-4.5 10-4.5V16l6-6-6-6z"
+                        fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+                </svg>
+              </div>
+              <div class="suw-action">
+                <svg class="suw-ic" viewBox="0 0 24 24" width="22" height="22">
+                  <circle cx="5"  cy="12" r="1.5" fill="currentColor"/>
+                  <circle cx="12" cy="12" r="1.5" fill="currentColor"/>
+                  <circle cx="19" cy="12" r="1.5" fill="currentColor"/>
+                </svg>
+              </div>
+              <div class="suw-music-disc"></div>
+            </div>
+
+            <!-- 하단 — 채널 핸들 / 구독 버튼 / 제목 라인 / 음악 라벨 / 진행바 -->
+            <div class="suw-bottom">
+              <div class="suw-channel-row">
+                <div class="suw-avatar-sm"></div>
+                <div class="suw-handle">@yourChannel</div>
+                <div class="suw-subscribe">구독</div>
+              </div>
+              <div class="suw-title-line"></div>
+              <div class="suw-title-line suw-title-short"></div>
+              <div class="suw-music-attr">
+                <svg viewBox="0 0 24 24" width="11" height="11" style="vertical-align:-1px">
+                  <path d="M9 18V5l11-2v13" fill="none" stroke="currentColor" stroke-width="1.6"/>
+                  <circle cx="6" cy="18" r="3" fill="none" stroke="currentColor" stroke-width="1.6"/>
+                  <circle cx="17" cy="16" r="3" fill="none" stroke="currentColor" stroke-width="1.6"/>
+                </svg>
+                <span>Original audio · @creator</span>
+              </div>
+              <div class="suw-progress"><span></span></div>
+            </div>
+
+            <!-- 좌상단 작은 라벨 — "YouTube UI 가림 영역 미리보기" -->
+            <div class="suw-badge">📱 Shorts UI Preview</div>
           </div>
 
           <!-- 데이터 없을 때 (sports preparing) 중앙 안내 — frame.empty-sports 일 때 표시 -->
@@ -313,14 +438,38 @@
   <!-- ======================================== -->
   <!-- 📱 모바일 전용 sticky CTA — 하단 고정       -->
   <!-- ======================================== -->
-  <!-- 데스크탑(>767px) 에선 CSS 가 display:none.
-       모바일에서는 사이드바 위치와 무관하게 항상 1탭으로 ▶ 투자 결과 보기 실행.
-       JS 가 main CTA (btn-restart-play) 와 라벨/클릭을 미러링. -->
+  <!-- 데스크탑(≥1200px) 에선 CSS 가 display:none.
+       2분할: [좌] 재생 토글 (재생/일시정지/이어서재생/다시재생)
+              [우] 처음부터 (reset+play). 항상 1탭으로 실행 가능. -->
   <div class="mobile-cta-bar" id="mobileCtaBar">
-    <button type="button" id="btn-mobile-cta" class="mobile-cta">
-      ▶ 투자 결과 보기
-    </button>
+    <button type="button" id="btn-mobile-play"    class="mobile-cta mobile-cta-primary">▶ 재생</button>
+    <button type="button" id="btn-mobile-restart" class="mobile-cta mobile-cta-secondary">↺ 처음부터</button>
   </div>
+
+  <!-- ======================================== -->
+  <!-- 🔍 종목 선택 모달 — 카드 그리드 + 검색 + 카테고리 탭 -->
+  <!-- ======================================== -->
+  <!-- 사이드바의 series-row 의 종목 버튼 클릭 시 열림.
+       js 가 .picker-grid 를 manifest 기반으로 동적 렌더.
+       검색: 이름·심볼 substring 매칭. 카테고리: 칩으로 필터. -->
+  <dialog id="symbolPicker" class="picker-modal">
+    <header class="picker-head">
+      <h2>종목 선택</h2>
+      <input id="pickerSearch" type="search" placeholder="🔍 이름 · 심볼 검색"
+             autocomplete="off" />
+      <button class="picker-close" id="pickerClose" type="button" aria-label="닫기">×</button>
+    </header>
+    <nav class="picker-cats" id="pickerCats" role="tablist" aria-label="카테고리 필터"></nav>
+    <section class="picker-grid" id="pickerGrid" role="listbox" aria-multiselectable="true"></section>
+    <footer class="picker-foot">
+      <div class="pf-info" id="pickerFoot"></div>
+      <div class="pf-actions">
+        <button type="button" class="pf-btn pf-clear" id="pickerClearBtn">전체 해제</button>
+        <button type="button" class="pf-btn pf-cancel" id="pickerCancelBtn">취소</button>
+        <button type="button" class="pf-btn pf-apply" id="pickerApplyBtn">✓ 적용 <span id="pickerApplyCount">(0)</span></button>
+      </div>
+    </footer>
+  </dialog>
 
   <!-- ======================================== -->
   <!-- 📦 DB 모달 — 종목 데이터 관리              -->

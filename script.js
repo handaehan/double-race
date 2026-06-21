@@ -103,7 +103,10 @@ function _yearsAgoYearMonth(years) {
 const INVESTMENT = {
   enabled: true,
   mode: 'monthly',
-  amount: 1000000,                       // 100만원 (원 단위)
+  /* ⭐ amount 단위: USD ($). 해외 타깃 컨텐츠가 메인이라 입력 자체를 달러로 통일.
+     - en 출력: $1,000 (그대로)
+     - ko 출력: × 1000 → 1,000,000 원 (display 단계에서 환산. 1$ ≈ 1000원 근사) */
+  amount: 1000,                          // 1,000 USD (= 100만원 근사)
   startDate: _yearsAgoYearMonth(10),     // 현재 기준 정확히 10년 전
   endDate:   _currentYearMonth()
 };
@@ -214,8 +217,12 @@ function refreshDisplaySeries() {
   // 모드 변경 시 UI (CTA / 헤더 텍스트 / .investment-only) 자동 동기화
   applyModeToUI();
 
-  // sports 모드 (모든 시리즈 cumulative_sum) 에선 DCA 무관 — 누적값을 그대로 표시
-  const wantsSim = INVESTMENT.enabled && INVESTMENT.amount > 0 && !_allSeriesCumulative();
+  // DCA 시뮬레이션 우회 조건:
+  //  - sports/rate/absolute/count 모드 전체 일치 (의도된 raw value 표시)
+  //  - 또는 mixed-mode (단위 다른 종목 섞임) — DCA 가 0 에 가까운 값을 만들어내는 버그 방지.
+  //  → _anySeriesHasSpecialMode() 만으로 충분 (모든 special 모드 + 혼합 케이스 커버)
+  const wantsSim = INVESTMENT.enabled && INVESTMENT.amount > 0
+                && !_anySeriesHasSpecialMode();
 
   if (wantsSim) {
     // 가격 데이터 → DCA 시뮬레이션 → 평가금 시계열 (이중 계산 방지: 여기 한 곳에서만)
@@ -243,7 +250,9 @@ function refreshDisplaySeries() {
     // sports 모드는 투자금 개념이 없으므로 회색 점선/기준선/예상선 모두 OFF.
     displayDates  = RACE.dates;
     displaySeries = RACE.series;
-    if (INVESTMENT.amount > 0 && RACE.dates.length && !_allSeriesCumulative()) {
+    // 원금 점선은 순수 투자 모드 (모든 종목이 가격) 일 때만 의미 있음 — special mode 가
+    // 하나라도 끼면 단위 mismatch 발생하므로 점선 표시 X
+    if (INVESTMENT.amount > 0 && RACE.dates.length && !_anySeriesHasSpecialMode()) {
       principalArr = RACE.dates.map((_, i) => INVESTMENT.amount * (i + 1));
     }
   }
@@ -1088,11 +1097,78 @@ function _formatGoals(v) {
   return fn ? fn(n) : `${n.toLocaleString()}골`;
 }
 
+/* 'rate' 모드 — 인구통계/지표 등 무차원 값 (출산률, 비율, 점수).
+   모든 선택 시리즈가 manifest 의 value_mode='rate' 이면 활성. */
+function _allSeriesRate() {
+  if (!RACE.series.length) return false;
+  return RACE.series.every(s => {
+    const e = MANIFEST.tickers && MANIFEST.tickers[s.symbol];
+    return e && e.value_mode === 'rate';
+  });
+}
+
+/* 'absolute' 모드 — 절대 가격 비교 (집값 등). DCA 시뮬레이션 없이 raw value 표시.
+   Y축은 USD 통화 포맷 (_amountFmtShort) 그대로 사용. */
+function _allSeriesAbsolute() {
+  if (!RACE.series.length) return false;
+  return RACE.series.every(s => {
+    const e = MANIFEST.tickers && MANIFEST.tickers[s.symbol];
+    return e && e.value_mode === 'absolute';
+  });
+}
+
+/* 'count' 모드 — 절대 개수 (구독자수 등). DCA 우회 + 무차원 카운트 포맷 (290M / 1.2B). */
+function _allSeriesCount() {
+  if (!RACE.series.length) return false;
+  return RACE.series.every(s => {
+    const e = MANIFEST.tickers && MANIFEST.tickers[s.symbol];
+    return e && e.value_mode === 'count';
+  });
+}
+
+/* 시리즈 중 하나라도 special value_mode (cumulative_sum/rate/absolute/count) 를 가지면 true.
+   true 면 DCA 시뮬레이션 우회 — 단위가 다른 종목이 섞여 있어도 raw 값 그대로 표시.
+   (예: S&P500 + Cocomelon 같은 mixed-category 케이스에서 $0 출력 버그 방지) */
+function _anySeriesHasSpecialMode() {
+  if (!RACE.series.length) return false;
+  return RACE.series.some(s => {
+    const e = MANIFEST.tickers && MANIFEST.tickers[s.symbol];
+    if (!e) return false;
+    const vm = e.value_mode;
+    return vm === 'cumulative_sum' || vm === 'rate' || vm === 'absolute' || vm === 'count';
+  });
+}
+
+/* rate 모드 숫자 포맷 — 소수 둘째 자리까지. "0.78" / "1.20" */
+function _formatRate(v) {
+  if (!isFinite(v)) return '0';
+  return v.toFixed(2);
+}
+
+/* count 모드 숫자 포맷 — lang 별 K/M/B (en) 또는 만/억 (ko). 통화 prefix 없음. */
+function _formatCount(v) {
+  const n = Math.round(v);
+  const abs = Math.abs(n);
+  if (_currentLang() === 'en') {
+    if (abs >= 1_000_000_000) return (n / 1_000_000_000).toFixed(2).replace(/\.?0+$/, '') + 'B';
+    if (abs >= 1_000_000)     return (n / 1_000_000).toFixed(2).replace(/\.?0+$/, '') + 'M';
+    if (abs >= 1_000)         return (n / 1_000).toFixed(1).replace(/\.?0+$/, '') + 'K';
+    return String(n);
+  }
+  // ko — 한국 단위
+  if (abs >= 100_000_000) return (n / 100_000_000).toFixed(2).replace(/\.?0+$/, '') + '억';
+  if (abs >= 10_000)      return (n / 10_000).toFixed(1).replace(/\.?0+$/, '') + '만';
+  return n.toLocaleString();
+}
+
 /* ── 모드 추론 ──
    현재 선택된 시리즈의 manifest 메타로 자동 판단.
    향후 확장: ranking / custom 등은 별도 value_mode 키로 분기 가능. */
 function getCurrentMode() {
   if (_allSeriesCumulative()) return 'sports';
+  if (_allSeriesRate())       return 'rate';
+  if (_allSeriesAbsolute())   return 'absolute';   // 집값 등 USD 절대값
+  if (_allSeriesCount())      return 'count';      // ⭐ 신규 — 구독자수 등 무차원 카운트
   // 미래 확장 자리: ranking, custom 등
   return 'investment';     // 기본 — DCA 시뮬레이션
 }
@@ -1133,7 +1209,7 @@ function applyModeToUI() {
   const mode = getCurrentMode();
   document.body.dataset.mode = mode;
 
-  // CTA 버튼 문구 — 사이드바 인라인 CTA + 모바일 sticky CTA 미러링
+  // 사이드바 인라인 CTA — mode + lang 양쪽 반영
   const dict = I18N[_currentLang()] || I18N.ko;
   const key  = 'cta' + mode.charAt(0).toUpperCase() + mode.slice(1);   // ctaInvestment / ctaSports / ctaRanking
   const ctaLabel = dict[key] || MODE_CTA_LABELS[mode] || '▶ 시작';
@@ -1141,8 +1217,8 @@ function applyModeToUI() {
   const cta = document.getElementById('btn-restart-play');
   if (cta) cta.textContent = ctaLabel;
 
-  const mobileCta = document.getElementById('btn-mobile-cta');
-  if (mobileCta) mobileCta.textContent = ctaLabel;
+  // 모바일 sticky 하단 — 좌(재생 토글) / 우(처음부터) 라벨 별도 관리
+  _updateMobileCtaLabels();
 
   // 모드별 텍스트 노드 (data-mode-text="investment값|sports값|...")
   document.querySelectorAll('[data-mode-text]').forEach(el => {
@@ -1166,6 +1242,37 @@ function applyModeToUI() {
       pairEl.textContent = names.length >= 2 ? names.join(' vs ') : '';
     }
   }
+}
+
+/* 모바일 sticky CTA 라벨 동기화 — 재생 상태 기반.
+   호출 시점: applyModeToUI / play / pause / reset / 매 프레임 render() 끝에서.
+   상태:
+     (a) 시작 전 (progress 0, !playing, !finished)  → 좌: 재생
+     (b) 재생 중 (playing)                          → 좌: 일시정지
+     (c) 일시정지 (mid, !playing, 0<progress<MAX)   → 좌: 이어서 재생
+     (d) 종료 (finished)                            → 좌: 다시 재생
+   우측은 항상 "처음부터". */
+function _updateMobileCtaLabels() {
+  const playBtn    = document.getElementById('btn-mobile-play');
+  const restartBtn = document.getElementById('btn-mobile-restart');
+  if (!playBtn && !restartBtn) return;
+
+  const dict = I18N[_currentLang()] || I18N.ko;
+  if (restartBtn) restartBtn.textContent = dict.mobileRestart || '↺ 처음부터';
+  if (!playBtn) return;
+
+  let label;
+  if (typeof playing !== 'undefined' && playing) {
+    label = dict.mobilePause;
+  } else if (typeof finishedAt !== 'undefined' && finishedAt !== null) {
+    label = dict.mobileReplay;
+  } else if (typeof progress !== 'undefined' && typeof X_MAX !== 'undefined' &&
+             progress > 0 && progress < X_MAX) {
+    label = dict.mobileResume;
+  } else {
+    label = dict.mobilePlay;
+  }
+  playBtn.textContent = label || '▶ 재생';
 }
 
 /* ── 데이터 준비중 안내 모달 (alert 대체) ── */
@@ -1192,6 +1299,47 @@ function getDisplayTitle() {
     const names = RACE.series.map(s => _seriesDisplayName(s)).filter(Boolean);
     if (names.length >= 2) return dict.titleSports(names[0], names[1]);
     return lang === 'en' ? 'Goal Race' : '골 레이스';
+  }
+
+  // rate 모드 — 출산률 등 지표 비교. 2~3개 시리즈 모두 지원.
+  if (_allSeriesRate()) {
+    const names = RACE.series.map(s => _seriesDisplayName(s)).filter(Boolean);
+    if (names.length >= 2 && typeof dict.titleRate === 'function') {
+      return dict.titleRate(names);
+    }
+    return lang === 'en' ? 'Fertility Rate' : '출산률 비교';
+  }
+
+  // absolute 모드 — 집값 등 USD 절대 가격 비교. 기간(년)을 hook 으로.
+  if (_allSeriesAbsolute()) {
+    const firstYM = (RACE.dates && RACE.dates[0]) || '';
+    const lastYM  = (RACE.dates && RACE.dates[RACE.dates.length - 1]) || '';
+    let years = 30;
+    if (firstYM && lastYM) {
+      const sy = parseInt(firstYM.slice(0, 4), 10);
+      const ey = parseInt(lastYM.slice(0, 4), 10);
+      if (Number.isFinite(sy) && Number.isFinite(ey)) years = Math.max(1, ey - sy);
+    }
+    if (typeof dict.titleAbsolute === 'function') {
+      return dict.titleAbsolute(years);
+    }
+    return lang === 'en' ? 'Home Price Race' : '집값 비교';
+  }
+
+  // count 모드 — YouTube 구독자수 등 무차원 카운트.
+  if (_allSeriesCount()) {
+    const firstYM = (RACE.dates && RACE.dates[0]) || '';
+    const lastYM  = (RACE.dates && RACE.dates[RACE.dates.length - 1]) || '';
+    let years = 5;
+    if (firstYM && lastYM) {
+      const sy = parseInt(firstYM.slice(0, 4), 10);
+      const ey = parseInt(lastYM.slice(0, 4), 10);
+      if (Number.isFinite(sy) && Number.isFinite(ey)) years = Math.max(1, ey - sy);
+    }
+    if (typeof dict.titleCount === 'function') {
+      return dict.titleCount(years);
+    }
+    return lang === 'en' ? 'YouTube Subscriber Race' : 'YouTube 구독자 레이스';
   }
 
   if (INVESTMENT.enabled && INVESTMENT.amount > 0) {
@@ -1260,7 +1408,8 @@ function _fitTitle() {
   // line-height 가 'normal' 또는 단위 없는 숫자면 그대로 ratio
   if (/^[\d.]+$/.test(lhRaw)) lhRatio = parseFloat(lhRaw);
 
-  const minFz = 14;
+  // 모바일 Shorts 가독성 우선 — 너무 작아지지 않게 minFz 상향.
+  const minFz = 24;
   for (let i = 0; i < 60; i++) {
     const targetH = fz * lhRatio * targetLines + 2;   // 2px 여유
     const overflowH = titleEl.scrollHeight > targetH;
@@ -1477,6 +1626,30 @@ const SERIES_META = {
   copper:     { color: '#B87333' },   // Copper bronze
   oil:        { color: '#546E7A' },   // Oil (black → 슬레이트 그레이로 가시성)
   gas:        { color: '#26C6DA' },   // Natural gas cyan
+
+  // 인구통계 (TFR — 합계출산률) — 각국 국기 톤 + defaultIcon 으로 국기 emoji 자동 표시
+  // (한글 텍스트 약어 대신 영어권에서도 즉시 인식되는 깃발 사용)
+  kr_birth:   { color: '#0047A0', defaultIcon: { type: 'emoji', value: '🇰🇷' } },
+  cn_birth:   { color: '#DE2910', defaultIcon: { type: 'emoji', value: '🇨🇳' } },
+  jp_birth:   { color: '#FAAB18', defaultIcon: { type: 'emoji', value: '🇯🇵' } },
+
+  // 부동산 (집값) — 4개국, 시각 충돌 없도록 distinct 색
+  us_house:   { color: '#2E7D32', defaultIcon: { type: 'emoji', value: '🇺🇸' } },  // 머니 그린
+  hk_house:   { color: '#DE2910', defaultIcon: { type: 'emoji', value: '🇭🇰' } },  // 홍콩 적색
+  uk_house:   { color: '#00247D', defaultIcon: { type: 'emoji', value: '🇬🇧' } },  // Union Jack 네이비
+  au_house:   { color: '#FFC72C', defaultIcon: { type: 'emoji', value: '🇦🇺' } },  // Aus 골드
+
+  // YouTube 채널 — 채널별 시각 정체성. 사용자 요청 컬러 매핑 반영.
+  yt_mrbeast:    { color: '#FF1A75', defaultIcon: { type: 'emoji', value: '🎬' } },  // MrBeast 핑크
+  yt_tseries:    { color: '#E72A2D', defaultIcon: { type: 'emoji', value: '🎵' } },  // T-Series 레드
+  yt_pewdiepie:  { color: '#00BCD4', defaultIcon: { type: 'emoji', value: '🎮' } },  // PewDiePie 시안
+  yt_cocomelon:  { color: '#43A047', defaultIcon: { type: 'emoji', value: '🍉' } },  // Cocomelon 그린
+  yt_likenastya: { color: '#E91E63', defaultIcon: { type: 'emoji', value: '👧' } },  // 키즈 핑크
+  yt_kidsdiana:  { color: '#9C27B0', defaultIcon: { type: 'emoji', value: '👶' } },  // 키즈 퍼플
+  yt_setindia:   { color: '#FF6F00', defaultIcon: { type: 'emoji', value: '📺' } },  // SET India 오렌지
+  yt_vladniki:   { color: '#FBC02D', defaultIcon: { type: 'emoji', value: '🚗' } },  // 키즈 옐로
+  yt_zeemusic:   { color: '#7B1FA2', defaultIcon: { type: 'emoji', value: '🎶' } },  // Zee 퍼플
+  yt_wwe:        { color: '#CE2029', defaultIcon: { type: 'emoji', value: '🤼' } },  // WWE 레드
 };
 
 /* ─── 종목명 i18n 테이블 (SYMBOL_LABELS) ───
@@ -1573,6 +1746,29 @@ const SYMBOL_LABELS = {
   copper:  { ko: '구리',      en: 'Copper' },
   oil:     { ko: '원유',      en: 'Oil' },
   gas:     { ko: '천연가스',  en: 'Natural Gas' },
+
+  // 인구통계 (TFR — 합계출산률)
+  kr_birth: { ko: '한국',  en: 'Korea' },
+  cn_birth: { ko: '중국',  en: 'China' },
+  jp_birth: { ko: '일본',  en: 'Japan' },
+
+  // 부동산 (평균/중위 집값)
+  us_house: { ko: '미국',       en: 'USA'       },
+  hk_house: { ko: '홍콩',       en: 'Hong Kong' },
+  uk_house: { ko: '영국',       en: 'UK'        },
+  au_house: { ko: '시드니',     en: 'Sydney'    },
+
+  // YouTube 채널 — 채널명은 원래 영문이라 ko/en 동일
+  yt_mrbeast:    { ko: 'MrBeast',           en: 'MrBeast'           },
+  yt_tseries:    { ko: 'T-Series',          en: 'T-Series'          },
+  yt_pewdiepie:  { ko: 'PewDiePie',         en: 'PewDiePie'         },
+  yt_cocomelon:  { ko: 'Cocomelon',         en: 'Cocomelon'         },
+  yt_likenastya: { ko: 'Like Nastya',       en: 'Like Nastya'       },
+  yt_kidsdiana:  { ko: 'Kids Diana',        en: 'Kids Diana'        },
+  yt_setindia:   { ko: 'SET India',         en: 'SET India'         },
+  yt_vladniki:   { ko: 'Vlad & Niki',       en: 'Vlad & Niki'       },
+  yt_zeemusic:   { ko: 'Zee Music',         en: 'Zee Music'         },
+  yt_wwe:        { ko: 'WWE',               en: 'WWE'               },
 
   // 스포츠 / 카드
   pokemon_charizard: { ko: '포켓몬카드', en: 'Pokémon Card' },
@@ -1800,8 +1996,22 @@ function _buildIconInner(ico, color, symbol, name) {
   if (ico.type === 'emoji' && ico.value) {
     return `<span class="icon-emoji-glyph">${ico.value}</span>`;
   }
-  /* auto: manifest 에 logo 가 등록되어 있으면 우선 사용 (영속 — 한 번 등록하면 계속).
-     없으면 텍스트 약어 폴백 (시리즈 색 배경 + 흰색 굵음). */
+  /* auto 모드 — 우선순위:
+     1) SERIES_META[symbol].defaultIcon (예: 국가 국기 emoji) — 해외 시청자도 즉시 인식
+     2) manifest 의 logo 이미지 (한 번 등록하면 영속)
+     3) 텍스트 약어 (시리즈 색 배경 + 흰색 굵음) */
+  if (ico.type === 'auto' || ico.type == null) {
+    const meta = SERIES_META[symbol];
+    if (meta && meta.defaultIcon) {
+      const di = meta.defaultIcon;
+      if (di.type === 'emoji' && di.value) {
+        return `<span class="icon-emoji-glyph icon-emoji-flag">${di.value}</span>`;
+      }
+      if (di.type === 'image' && di.value) {
+        return `<img src="${di.value}" alt="" />`;
+      }
+    }
+  }
   const logo = _resolveLogo(symbol);
   if (logo) return `<img src="${logo}" alt="" />`;
   const label = _resolveAutoLabel(symbol, name);
@@ -1837,34 +2047,33 @@ function renderEndpointIcons(currentValues, leaderIdx, finished) {
   // 미사용 노드 제거: 새 키 셋과 비교해 빠진 것 정리
   const seenKeys = new Set();
 
-  /* ── 충돌 회피 사전계산 ──
-     1) 각 시리즈의 자연 픽셀 좌표 산출
-     2) ⭐ Shorts Safe — 2단계 clamp:
-        (a) 아이콘 중심 X ≤ SHORTS_MAX_X_RATIO (소프트 가이드)
-        (b) 렌더 후 라벨 bounding box 우측 끝 ≤ LABEL_MAX_RIGHT_RATIO (하드 보장)
-        라인 자체는 끝까지 그려짐 — 아이콘 + 라벨 위치만 좌측으로 당김.
-     3) Y 순으로 정렬 후 최소 간격(MIN_VGAP) 미만이면 아래로 밀어냄 */
-  const MIN_VGAP   = 44;
-  /* 아이콘 중심 1차 clamp — 62% (이전 69% 에서 7% 축소).
-     긴 금액/이름이 없을 때도 끝점이 시각적으로 우측 너무 붙지 않게 */
-  const SHORTS_MAX_X_RATIO    = 0.62;
-  /* 라벨(아이콘+이름+금액+WIN) 전체 우측 끝 절대 한계 = 69% (Safe overlay 빨강 시작점).
-     실제 측정한 offsetWidth 기준으로 초과 시 그만큼 좌측 이동. */
-  const LABEL_MAX_RIGHT_RATIO = 0.69;
-  const overlayW   = endpointOverlay.clientWidth || endpointOverlay.getBoundingClientRect().width;
-  const maxXPx     = overlayW * SHORTS_MAX_X_RATIO;
-  const maxLabelRightPx = overlayW * LABEL_MAX_RIGHT_RATIO;
-  const liveTs     = timeAt(progress);
-  const layout     = displaySeries.map((_s, idx) => {
+  /* ── 끝점 아이콘 레이아웃 (2026-06 개선) ──
+     원칙: 아이콘은 라인 끝점에 딱 붙음. 라벨이 Shorts 우측 UI 영역(31%)
+            에 침범할 경우 라벨을 아이콘 왼쪽으로 flip 해서 회피.
+     1) 자연 픽셀 좌표 (라인이 실제 끝나는 위치)
+     2) 아이콘 X — 최대 95% 까지만 (chart 우측 cut-off 방지) 살짝 clamp
+     3) 라벨 flip: 아이콘 중심이 55% 를 초과하면 라벨을 아이콘 왼쪽에 배치
+     4) Y 충돌 회피: 정렬 후 MIN_VGAP 미만이면 아래로 push */
+  const MIN_VGAP            = 44;
+  const MAX_ICON_X_RATIO    = 0.95;   // 아이콘 중심 우측 한계 (절반 잘림 방지)
+  const FLIP_LABEL_X_RATIO  = 0.55;   // 이 비율 초과 시 라벨 좌측 flip
+  const LABEL_MAX_RIGHT_RATIO = 0.69; // 라벨(아이콘+이름+금액+WIN) 우측 끝 절대 한계 — Shorts UI 영역(31%) 회피
+  const overlayW            = endpointOverlay.clientWidth || endpointOverlay.getBoundingClientRect().width;
+  const maxIconXPx          = overlayW * MAX_ICON_X_RATIO;
+  const flipLabelXPx        = overlayW * FLIP_LABEL_X_RATIO;
+  const maxLabelRightPx     = overlayW * LABEL_MAX_RIGHT_RATIO;
+  const liveTs              = timeAt(progress);
+  const layout              = displaySeries.map((_s, idx) => {
     const v = currentValues[idx];
     if (liveTs == null || v == null || !isFinite(v)) return null;
     let p;
     try { p = chart.convertToPixel({ gridIndex: 0 }, [liveTs, v]); }
     catch { return null; }
     if (!p || !isFinite(p[0]) || !isFinite(p[1])) return null;
-    // Shorts safe-area clamp — 라인 끝이 78% 를 넘어도 아이콘은 78% 에서 멈춤.
-    const clampedX = Math.min(p[0], maxXPx);
-    return { idx, x: clampedX, naturalY: p[1], y: p[1] };
+    // 아이콘 X — 라인 끝점 그대로, 단 우측 95% 까지만 (잘림 방지)
+    const iconX  = Math.min(p[0], maxIconXPx);
+    const flipped = iconX > flipLabelXPx;
+    return { idx, x: iconX, naturalY: p[1], y: p[1], flipped };
   }).filter(Boolean);
 
   // Y 가 작은(위쪽) 항목부터 처리 — 충돌 시 아래로 push
@@ -1908,11 +2117,21 @@ function renderEndpointIcons(currentValues, leaderIdx, finished) {
       _iconNodes.set(`__idx${idx}`, node);
     }
 
-    /* 위치: icon-inner (34px 원) 의 가운데가 정확히 데이터 포인트에 오도록 보정.
-       flex 컨테이너 top-left = (px - 17, py - 17) → 첫 자식 icon-inner 중심 = (px, py).
-       meta 텍스트는 자연스럽게 오른쪽으로 흐름. */
-    node.style.left = `${px[0] - ICON_SIZE_HALF}px`;
-    node.style.top  = `${px[1] - ICON_SIZE_HALF}px`;
+    /* 위치 — flip 여부에 따라 left/right 한 쪽만 설정:
+       - flipped: 라벨이 아이콘 왼쪽 (flex-direction: row-reverse).
+         icon-inner CENTER 가 px 에 오려면 컨테이너 right = px + ICON_SIZE_HALF.
+         → CSS right = overlayW - (px + ICON_SIZE_HALF)
+       - 일반: icon-inner 가 컨테이너 첫 자식. 컨테이너 left = px - ICON_SIZE_HALF. */
+    if (pos.flipped) {
+      node.classList.add('flip-left');
+      node.style.left = '';
+      node.style.right = `${overlayW - px[0] - ICON_SIZE_HALF}px`;
+    } else {
+      node.classList.remove('flip-left');
+      node.style.right = '';
+      node.style.left = `${px[0] - ICON_SIZE_HALF}px`;
+    }
+    node.style.top = `${px[1] - ICON_SIZE_HALF}px`;
 
     /* Bold. 레퍼런스 스타일: 이름(흰색) + 금액(시리즈 색) — 수익률 % 는 표시 X.
        시청자 입장에선 "지금 얼마가 됐는지" 절대 금액이 더 직관적. */
@@ -1921,8 +2140,11 @@ function renderEndpointIcons(currentValues, leaderIdx, finished) {
     const retEl   = node.querySelector('.icon-ret');
     const dispName = _seriesDisplayName(s);
     nameEl.textContent = dispName;
-    // sports 모드면 골 카운트, 그 외엔 금액 포맷
-    const moneyStr = _allSeriesCumulative() ? _formatGoals(v) : _amountFmtShort(v);
+    // 모드별 끝점 값 포맷: sports → 골 / rate → 소수 / count → 290M / 그 외 → 금액
+    const moneyStr = _allSeriesCumulative() ? _formatGoals(v)
+                   : _allSeriesRate()       ? _formatRate(v)
+                   : _allSeriesCount()      ? _formatCount(v)
+                                            : _amountFmtShort(v);
     retEl.textContent  = moneyStr;
     retEl.className    = 'icon-ret amount ' + (ret > 0 ? 'up' : ret < 0 ? 'down' : 'flat');
 
@@ -2080,12 +2302,11 @@ function renderChart(currentValues, leaderIdx, finished) {
   }
 
   // 축 표시 여부에 따라 grid 여백 동적 조정
-  // X축 라벨 회전 38° → 하단 여유 더 확보 (32 → 56)
-  const gridLeft   = VIEW.showY ? 52 : 14;
-  // gridBottom 축소 (56 → 44): 회전 라벨이 더 위에 위치, 차트 데이터 영역도 약간 확장
-  const gridBottom = VIEW.showX ? 44 : 8;
-  const gridRight  = VIEW.showEndLabel ? 86 : 16;
-  const gridTop    = 16;
+  // 2026-06 리디자인 — 차트 영역 +6~10% 확대 위해 padding 추가 축소
+  const gridLeft   = VIEW.showY ? 48 : 10;
+  const gridBottom = VIEW.showX ? 38 : 6;
+  const gridRight  = VIEW.showEndLabel ? 78 : 12;
+  const gridTop    = 8;
 
   /* X축 = 시작일~종료일 전체 범위 고정.
      재생 중에는 라인 데이터(values)만 progress 까지 slice 되어 늘어나고,
@@ -2108,22 +2329,24 @@ function renderChart(currentValues, leaderIdx, finished) {
       symbol: 'none',
       data: points,
       lineStyle: {
-        width: (isLeader ? 4 : 3.2) * (finished ? 1.12 : 1),
+        /* 2026-06 리디자인 — Shorts 모바일 시인성을 위해 굵기 +12% */
+        width: (isLeader ? 4.6 : 3.6) * (finished ? 1.12 : 1),
         color: s.color,
         shadowColor: s.color,
-        shadowBlur: (isLeader || finished) ? 5 : 0,
+        /* 글로우 -40% (5 → 3). leader/finished 만 살짝 발광 (우승 강조 유지) */
+        shadowBlur: (isLeader || finished) ? 3 : 0,
         cap: 'round',
         join: 'round'
       },
-      // 라인 아래 면적: 더 자연스러운 페이드 (위 32% → 70% 지점 페이드 → 0)
+      // 라인 아래 면적: 채도 살짝 줄여 라인이 더 도드라지게 (Shorts 시인성)
       areaStyle: {
         origin: 'start',
         opacity: 1,
         color: {
           type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
           colorStops: [
-            { offset: 0,    color: rgbaFromHex(s.color, finished ? 0.42 : 0.32) },
-            { offset: 0.55, color: rgbaFromHex(s.color, 0.10) },
+            { offset: 0,    color: rgbaFromHex(s.color, finished ? 0.36 : 0.26) },
+            { offset: 0.55, color: rgbaFromHex(s.color, 0.08) },
             { offset: 1,    color: rgbaFromHex(s.color, 0.0)  }
           ]
         }
@@ -2205,7 +2428,10 @@ function renderChart(currentValues, leaderIdx, finished) {
         fontSize: 11,
         fontWeight: 600,
         margin: 6,
-        formatter: (val) => _allSeriesCumulative() ? _formatGoals(val) : _amountFmtShort(val)
+        formatter: (val) => _allSeriesCumulative() ? _formatGoals(val)
+                          : _allSeriesRate()       ? _formatRate(val)
+                          : _allSeriesCount()      ? _formatCount(val)
+                                                   : _amountFmtShort(val)
       }
     },
 
@@ -2376,7 +2602,8 @@ function getDisplaySubtitle() {
   if (INVESTMENT.enabled) {
     const startD = parseDate(INVESTMENT.startDate) || parseDate(displayDates[0]);
     const endD   = parseDate(INVESTMENT.endDate)   || parseDate(displayDates[displayDates.length - 1]);
-    const amt    = formatMoney(INVESTMENT.amount, RACE.unit);
+    // INVESTMENT.amount 가 USD 단위 → KRW 환산 후 표시
+    const amt    = formatMoney(INVESTMENT.amount * _USD_TO_KRW, RACE.unit);
     const period = fmtPeriodKr(startD, endD);
     if (INVESTMENT.mode === 'lump') {
       return `${amt}원 일시투자 (${period})`;
@@ -2390,7 +2617,7 @@ function getDisplaySubtitle() {
 function _legacyAutoSubtitle() {
   if (INVESTMENT.enabled) {
     const startKr = fmtDateKr(INVESTMENT.startDate || displayDates[0] || '');
-    const amt     = fmtMoneyStr(INVESTMENT.amount, RACE.unit);
+    const amt     = fmtMoneyStr(INVESTMENT.amount * _USD_TO_KRW, RACE.unit);
     if (!startKr) return '';
     if (INVESTMENT.mode === 'lump') return `${startKr}에 ${amt} 일시투자 기준`;
     return `${startKr}부터 ${modeLabel(INVESTMENT.mode)} ${amt} 기준`;
@@ -2417,12 +2644,32 @@ function renderSubtitle() {
   const colors = RACE.series.map(s => s.color);
 
   if (!userSubtitle && names.length >= 2) {
-    const parts = [];
-    for (let i = 0; i < names.length; i++) {
-      parts.push(`<span class="sub-series" style="color:${_escHtml(colors[i])}">${_escHtml(names[i])}</span>`);
-      if (i < names.length - 1) parts.push('<span class="sub-vs">VS</span>');
+    /* 시리즈 수에 따라 자동 레이아웃 — "VS VS 줄바꿈" 절대 금지.
+       - 2~3개: 기존 'A VS B VS C' 한 줄
+       - 4개  : 2개씩 두 줄, 가운데 • 점 구분 (A • B / C • D)
+       - 5+개 : 한 줄에 2개씩 자동 분할, • 구분 */
+    const seriesSpan = (i) =>
+      `<span class="sub-series" style="color:${_escHtml(colors[i])}">${_escHtml(names[i])}</span>`;
+
+    if (names.length <= 3) {
+      const parts = [];
+      for (let i = 0; i < names.length; i++) {
+        parts.push(seriesSpan(i));
+        if (i < names.length - 1) parts.push('<span class="sub-vs">VS</span>');
+      }
+      subtitleEl.innerHTML = parts.join(' ');
+    } else {
+      // 4+ 시리즈 — 두 개씩 행 분할, • 점 구분자
+      const rows = [];
+      for (let i = 0; i < names.length; i += 2) {
+        const a = seriesSpan(i);
+        const b = (i + 1 < names.length)
+          ? `<span class="sub-sep">•</span>${seriesSpan(i + 1)}`
+          : '';
+        rows.push(`<span class="sub-row">${a}${b}</span>`);
+      }
+      subtitleEl.innerHTML = rows.join('');
     }
-    subtitleEl.innerHTML = parts.join(' ');
     return;
   }
 
@@ -2531,6 +2778,11 @@ function render() {
   // CSV 기간 검증 — 매 프레임 호출되지만 DOM 업데이트는 idempotent
   renderCsvInfo();
   updateRangeWarning();
+
+  // 모바일 sticky CTA 좌측 라벨 — 매 프레임 갱신.
+  // tick() 종료 프레임에서 playing→false, finishedAt 설정되는 시점도 자동 반영.
+  // textContent 동일 시 브라우저가 reflow 안 일으키므로 비용 거의 없음.
+  _updateMobileCtaLabels();
 }
 
 /* =========================================================
@@ -2566,7 +2818,10 @@ function tick(time) {
    12. 재생 컨트롤
    ========================================================= */
 function play() {
-  if (X_MAX === 0) return;
+  if (X_MAX === 0) {
+    console.warn('[play] X_MAX=0 — 데이터가 비어 있어 재생 불가. RACE.dates 확인 필요.');
+    return;
+  }
   if (progress >= X_MAX) {
     progress   = 0;
     yMinSmooth = null;
@@ -2574,7 +2829,7 @@ function play() {
     xMaxSmooth = null;
     prevDiffs  = {};
     finishedAt = null;
-    frameEl.classList.remove('finished');
+    if (frameEl) frameEl.classList.remove('finished');
   }
   if (playing) return;
   playing  = true;
@@ -2585,6 +2840,8 @@ function play() {
 function pause() {
   playing  = false;
   lastTime = 0;
+  // pause 는 render 를 트리거하지 않으므로 모바일 sticky 좌측 라벨 직접 갱신
+  if (typeof _updateMobileCtaLabels === 'function') _updateMobileCtaLabels();
 }
 
 function reset() {
@@ -2612,33 +2869,122 @@ if (pauseBtn) pauseBtn.addEventListener('click', pause);
 if (resetBtn) resetBtn.addEventListener('click', reset);
 if (speedBtn) speedBtn.addEventListener('click', cycleSpeedMul);
 
-// 모바일 sticky 하단 CTA — 인라인 메인 CTA 와 동일 동작 (라벨/검증/재생 로직 공유)
-const mobileCtaBtn = document.getElementById('btn-mobile-cta');
-if (mobileCtaBtn && sbRestartBtn) {
-  mobileCtaBtn.addEventListener('click', () => sbRestartBtn.click());
+// 모바일 sticky 하단 — 2분할 버튼
+// (1) 좌: 재생 토글. 시작 전/일시정지/종료 → play() (필요시 검증), 재생중 → pause()
+// (2) 우: 처음부터. 항상 reset+play. 검증은 sbRestartBtn 핸들러가 처리하므로 .click() 위임.
+const mobilePlayBtn    = document.getElementById('btn-mobile-play');
+const mobileRestartBtn = document.getElementById('btn-mobile-restart');
+
+if (mobilePlayBtn) {
+  mobilePlayBtn.addEventListener('click', () => {
+    if (playing) {
+      pause();
+      _updateMobileCtaLabels();
+      return;
+    }
+    // 시작 전 (progress 0) 또는 종료 후 다시 재생 → 누락 종목 검증 필요.
+    // 중간 일시정지 상태에서 resume 은 검증 없이 그냥 play().
+    const needsValidation = (progress <= 0) || (finishedAt !== null) || (progress >= X_MAX);
+    if (needsValidation) {
+      if (sbRestartBtn) {
+        sbRestartBtn.click();   // 검증 + reset + setTimeout(play, 80) 일괄 처리
+      } else {
+        reset();
+        setTimeout(play, 80);
+      }
+    } else {
+      play();
+    }
+    _updateMobileCtaLabels();
+  });
 }
 
-// 새 사이드바 3단계 — 영상 실행 버튼
-if (sbRestartBtn) sbRestartBtn.addEventListener('click', () => {
-  // 사전 검증 — 누락 종목 있으면 재생 차단. 메시지는 mode 별로 다름
+if (mobileRestartBtn && sbRestartBtn) {
+  // 처음부터 — 메인 CTA 와 완전 동일 동작 (검증 / reset / play)
+  mobileRestartBtn.addEventListener('click', () => sbRestartBtn.click());
+}
+
+/* ═════════════════════════════════════════════════════════════
+   🏁 startRace() — 메인 CTA 의 단일 진입점. 어떤 상태에서도 강제로 시작.
+   ─────────────────────────────────────────────────────────────
+   설계 원칙:
+     • 외부 함수 의존 최소화 (play()/reset() 우회 — 직접 tick 시작)
+     • setTimeout 제거 — 동기 호출로 race-condition 차단
+     • derived state 강제 동기화 (refreshDisplaySeries / recomputeDerived)
+     • 모든 잔여 state 명시적 리셋
+   ═════════════════════════════════════════════════════════════ */
+function startRace() {
+  console.log('[RACE] startRace() — series=', RACE.series.length,
+              'mode=', getCurrentMode(),
+              'X_MAX=', X_MAX,
+              'displayDates=', displayDates ? displayDates.length : 0);
+
+  // 1) 누락 종목 차단
   const missing = getMissingSeries();
   if (missing.length) {
     const mode = getCurrentMode();
-    if (mode === 'sports') {
-      // 스포츠 — 중앙 안내 카드 (alert 대체)
-      showDataPrepModal();
-    } else {
-      alert(
-        '데이터 없음:\n  · ' + missing.join('\n  · ') + '\n\n' +
-        '📦 [데이터] 버튼을 눌러 다운로드한 뒤 다시 시도하세요.\n' +
-        '(0으로 그리거나 샘플 데이터를 만들지 않습니다.)'
-      );
+    if (mode === 'sports') { showDataPrepModal(); }
+    else {
+      alert('데이터 없음:\n  · ' + missing.join('\n  · ') +
+            '\n\n📦 [데이터] 버튼을 눌러 다운로드한 뒤 다시 시도하세요.');
     }
     return;
   }
-  reset();
-  setTimeout(play, 80);
-});
+
+  // 2) Derived state 강제 동기화 — applyMultiSelection 직후 등 race-condition 방어
+  if (!displayDates || displayDates.length === 0 || X_MAX <= 0) {
+    console.warn('[RACE] displayDates 비어있음 → refreshDisplaySeries 재실행');
+    refreshDisplaySeries();
+  }
+  if (X_MAX <= 0 || !displayDates || displayDates.length === 0) {
+    alert('차트 데이터가 비어 있습니다.\n종목을 다시 선택하거나 페이지를 새로고침 후 시도해주세요.');
+    return;
+  }
+
+  // 3) 완전 초기화 (잔여 state 제거)
+  playing    = false;
+  progress   = 0;
+  lastTime   = 0;
+  finishedAt = null;
+  yMinSmooth = null;
+  yMaxSmooth = null;
+  xMaxSmooth = null;
+  prevDiffs  = {};
+  if (frameEl) frameEl.classList.remove('finished');
+  if (typeof clearBanner === 'function') clearBanner();
+
+  // 4) progress=0 상태 즉시 반영
+  try { render(); } catch (e) { console.error('[RACE] initial render 실패', e); }
+
+  // 4-b) ⚡ RACE START 짧은 플래시 (0.42s) — 카운트다운 없이 즉시 race 시작과 동시 표시
+  _flashRaceStart();
+
+  // 5) ⭐ 직접 tick 시작 — play() 우회. 동기 경로 보장.
+  playing  = true;
+  lastTime = 0;
+  console.log('[RACE] tick 시작');
+  requestAnimationFrame(tick);
+}
+
+/* 'RACE START' 짧은 인트로 플래시 — 즉시 race 시작 (카운트다운 X).
+   CSS 애니메이션이 0.42s 후 자동 fade. 클래스만 토글, 끝나면 제거. */
+function _flashRaceStart() {
+  const el = document.getElementById('raceStartFlash');
+  if (!el) return;
+  const txt = el.querySelector('.rsf-text');
+  if (txt) {
+    const lang = (typeof _currentLang === 'function') ? _currentLang() : 'ko';
+    txt.textContent = (lang === 'en') ? 'RACE START' : 'RACE START';
+  }
+  // 이전 잔여 클래스 제거 후 강제 reflow → 매번 애니메이션 재시작
+  el.classList.remove('is-active');
+  void el.offsetWidth;
+  el.classList.add('is-active');
+  setTimeout(() => el.classList.remove('is-active'), 480);
+}
+
+// 새 사이드바 3단계 — 영상 실행 버튼 (메인 CTA + 모바일 sticky restart 공용 핸들러)
+if (sbRestartBtn) sbRestartBtn.addEventListener('click', startRace);
 if (sbPlayBtn)  sbPlayBtn .addEventListener('click', play);
 if (sbPauseBtn) sbPauseBtn.addEventListener('click', pause);
 
@@ -2756,44 +3102,367 @@ function _iconPreviewHTML(ico, color, symbol, name) {
   if (ico && ico.type === 'emoji' && ico.value) {
     return `<span>${ico.value}</span>`;
   }
-  // auto: manifest 의 logo 가 있으면 작은 원형 로고로, 없으면 텍스트 약어
+  // auto: SERIES_META.defaultIcon → manifest logo → 텍스트 약어 순
+  const meta = SERIES_META[symbol];
+  if (meta && meta.defaultIcon) {
+    const di = meta.defaultIcon;
+    if (di.type === 'emoji' && di.value) return `<span>${di.value}</span>`;
+    if (di.type === 'image' && di.value) return `<img src="${di.value}" alt="" />`;
+  }
   const logo = _resolveLogo(symbol);
   if (logo) return `<img src="${logo}" alt="" />`;
   const label = _resolveAutoLabel(symbol, name);
   return `<span class="row-auto-label" style="background:${color}">${label}</span>`;
 }
 
-function renderSeriesRows() {
-  // manifest 의 ticker 들을 category 그룹으로 옵션 구성
-  const grouped = _groupByCategory(MANIFEST.tickers || {});
+/* ═══════════════════════════════════════════════════
+   🔍 종목 선택 모달 (picker-modal) — 멀티 선택 패턴 (2026-06-17 개편)
+   ─────────────────────────────────────────────────
+   상태:
+     _pickerCtx.selected — Set<symbol>, 현재 모달 내 선택 (apply 전까지 미커밋)
+     _pickerCtx.cat      — 선택된 카테고리 ('all' 또는 manifest cat 값)
+     _pickerCtx.query    — 검색어 (lowercase)
+   호출 흐름:
+     openSymbolPicker() → selected 를 RACE.series 로 초기화 → 사용자가 카드 토글 →
+       '적용' 클릭 → applyMultiSelection() → RACE.series 재구성 → close
+   취소/backdrop/ESC: selected 폐기 (RACE.series 변경 없음)
+   ═══════════════════════════════════════════════════ */
+const _pickerCtx = { selected: new Set(), cat: 'all', query: '' };
+const _pickerEl       = () => document.getElementById('symbolPicker');
+const _pickerCatsEl   = () => document.getElementById('pickerCats');
+const _pickerGridEl   = () => document.getElementById('pickerGrid');
+const _pickerFootEl   = () => document.getElementById('pickerFoot');
+const _pickerSearchEl = () => document.getElementById('pickerSearch');
 
+function openSymbolPicker() {
+  // 모달이 열릴 때마다 현재 RACE.series 로 selected 초기화 (취소 시 원복 효과)
+  _pickerCtx.selected = new Set(RACE.series.map(s => s.symbol).filter(Boolean));
+  _pickerCtx.cat = 'all';
+  _pickerCtx.query = '';
+  _bindSymbolPickerEvents();
+  const dlg = _pickerEl();
+  const search = _pickerSearchEl();
+  if (search) search.value = '';
+  _renderPicker();
+  if (dlg && typeof dlg.showModal === 'function') {
+    dlg.showModal();
+    setTimeout(() => { if (search) search.focus(); }, 50);
+  }
+}
+
+function _closeSymbolPicker() {
+  const dlg = _pickerEl();
+  if (!dlg) return;
+  // (1) 표준 close 호출
+  try { if (typeof dlg.close === 'function') dlg.close(); } catch {}
+  // (2) 안전망: open 속성이 어떤 이유로든 남아 있으면 강제 제거 + display none 보강
+  //    showModal 후 close() 가 일부 환경에서 top-layer 만 빠지고 open 속성은 잔존하는 케이스 대비.
+  if (dlg.open) dlg.removeAttribute('open');
+}
+
+function _renderPicker() {
+  const tickers = MANIFEST.tickers || {};
+  const all = Object.values(tickers);
+
+  // 카테고리 칩 — 'all' + 데이터에 있는 카테고리들 (CATEGORY_ORDER 순)
+  const cats = new Map(); // cat -> count
+  for (const t of all) {
+    const c = t.category || 'other';
+    cats.set(c, (cats.get(c) || 0) + 1);
+  }
+  const orderedCats = [];
+  for (const c of CATEGORY_ORDER) if (cats.has(c)) orderedCats.push(c);
+  for (const c of cats.keys()) if (!orderedCats.includes(c)) orderedCats.push(c);
+
+  const catsEl = _pickerCatsEl();
+  if (catsEl) {
+    const chips = [`<button type="button" class="pc-chip" data-cat="all"
+                      aria-selected="${_pickerCtx.cat === 'all'}">
+                      전체 <span class="pc-count">${all.length}</span>
+                    </button>`];
+    for (const c of orderedCats) {
+      const meta = _catMeta(c);
+      chips.push(`<button type="button" class="pc-chip" data-cat="${c}"
+                    aria-selected="${_pickerCtx.cat === c}">
+                    ${meta.badge} ${meta.label} <span class="pc-count">${cats.get(c)}</span>
+                  </button>`);
+    }
+    catsEl.innerHTML = chips.join('');
+    catsEl.querySelectorAll('.pc-chip').forEach(btn => {
+      btn.addEventListener('click', () => {
+        _pickerCtx.cat = btn.dataset.cat;
+        _renderPicker();
+      });
+    });
+  }
+
+  // 필터링
+  const q = _pickerCtx.query.trim().toLowerCase();
+  const filtered = all.filter(t => {
+    if (_pickerCtx.cat !== 'all' && (t.category || 'other') !== _pickerCtx.cat) return false;
+    if (!q) return true;
+    const hay = `${(t.name || '').toLowerCase()} ${(t.symbol || '').toLowerCase()} ${(t.ticker || '').toLowerCase()}`;
+    return hay.includes(q);
+  });
+
+  // 정렬: 같은 카테고리 내에선 status 우선(ok > preparing > else), 그 다음 이름 가나다순
+  filtered.sort((a, b) => {
+    const ra = _statusRank(a) - _statusRank(b);
+    if (ra !== 0) return ra;
+    return (a.name || '').localeCompare(b.name || '', 'ko');
+  });
+
+  const gridEl = _pickerGridEl();
+  if (!gridEl) return;
+
+  if (!filtered.length) {
+    gridEl.innerHTML = `<div class="pg-empty">검색 결과 없음. 다른 키워드/카테고리를 시도해주세요.</div>`;
+  } else {
+    // 멀티 선택 상태 — selected Set 기준
+    const selectedSet = _pickerCtx.selected;
+    const atMax = selectedSet.size >= MAX_SERIES;
+    gridEl.innerHTML = filtered.map(t => {
+      const sym = t.symbol;
+      const meta = SERIES_META[sym] || {};
+      const color = meta.color || _resolveSeriesColor(sym, DEFAULT_COLORS[0]);
+      const cat = t.category || 'other';
+      const cmeta = _catMeta(cat);
+      const hasData = t.status === 'ok' && t.count > 0;
+      const statusCls = (t.status === 'ok' && t.count > 0) ? 'ok'
+                      : (t.status === 'preparing')        ? 'preparing'
+                                                          : 'empty';
+      const statusLbl = (t.status === 'ok' && t.count > 0) ? 'OK'
+                      : (t.status === 'preparing')        ? '준비중'
+                                                          : '없음';
+      // 아이콘: SERIES_META.defaultIcon → manifest logo → 텍스트 약어
+      let iconInner = '';
+      if (meta.defaultIcon && meta.defaultIcon.type === 'emoji' && meta.defaultIcon.value) {
+        iconInner = `<span>${meta.defaultIcon.value}</span>`;
+      } else if (meta.defaultIcon && meta.defaultIcon.type === 'image' && meta.defaultIcon.value) {
+        iconInner = `<img src="${meta.defaultIcon.value}" alt="" />`;
+      } else {
+        const logo = _resolveLogo(sym);
+        if (logo) iconInner = `<img src="${logo}" alt="" />`;
+        else {
+          const lbl = _resolveAutoLabel(sym, t.name);
+          iconInner = `<span class="pg-abbr">${_escHtml(lbl)}</span>`;
+        }
+      }
+      const period = hasData ? `${t.first} ~ ${t.last}` : '데이터 없음';
+      const selected = selectedSet.has(sym);
+      // MAX 도달 시 미선택 카드는 disabled (선택된 카드는 해제 가능하니 유지)
+      const disabled = atMax && !selected;
+      const dispName = (typeof _seriesDisplayName === 'function')
+        ? _seriesDisplayName({ symbol: sym, name: t.name })
+        : t.name;
+      return `
+        <button type="button" class="pg-card${disabled ? ' pg-disabled' : ''}"
+                data-sym="${_escHtml(sym)}"
+                aria-selected="${selected}" style="--pg-color:${color}">
+          <span class="pg-check">✓</span>
+          <span class="pg-icon">${iconInner}</span>
+          <span class="pg-name">${_escHtml(dispName || t.name)}</span>
+          <span class="pg-symbol">${_escHtml(sym)}</span>
+          <span class="pg-period">${cmeta.badge} ${period}</span>
+          <span class="pg-status ${statusCls}">${statusLbl}</span>
+        </button>
+      `;
+    }).join('');
+
+    // 카드 클릭 — selected Set 토글 (apply 누르기 전까지 RACE.series 변경 없음)
+    gridEl.querySelectorAll('.pg-card').forEach(card => {
+      card.addEventListener('click', () => {
+        const sym = card.dataset.sym;
+        if (!sym) return;
+        if (_pickerCtx.selected.has(sym)) {
+          _pickerCtx.selected.delete(sym);
+        } else {
+          if (_pickerCtx.selected.size >= MAX_SERIES) return;   // 안전망
+          _pickerCtx.selected.add(sym);
+        }
+        _renderPicker();   // 토글 후 즉시 재렌더 (체크 표시 + 카운트 갱신)
+      });
+    });
+  }
+
+  // Footer info row — 현재 선택 개수 / MAX 안내 / 필터 결과 카운트
+  const footEl = _pickerFootEl();
+  const selCount = _pickerCtx.selected.size;
+  if (footEl) {
+    const total = all.length;
+    const filterTxt = (filtered.length === total)
+      ? `${total}개`
+      : `${filtered.length} / ${total}개 표시중`;
+    if (selCount === 0) {
+      footEl.textContent = `${filterTxt} — 카드를 클릭해서 비교할 종목을 선택하세요`;
+    } else if (selCount >= MAX_SERIES) {
+      footEl.textContent = `${selCount}개 선택됨 (최대 ${MAX_SERIES}개) — 적용 또는 다른 종목 클릭으로 교체`;
+    } else {
+      footEl.textContent = `${selCount}개 선택됨 — ${filterTxt} 중`;
+    }
+  }
+  // 적용 버튼 카운트 + 활성/비활성
+  const applyBtn   = document.getElementById('pickerApplyBtn');
+  const applyCount = document.getElementById('pickerApplyCount');
+  const clearBtn   = document.getElementById('pickerClearBtn');
+  if (applyCount) applyCount.textContent = `(${selCount})`;
+  if (applyBtn)   applyBtn.disabled = (selCount === 0);
+  if (clearBtn)   clearBtn.disabled = (selCount === 0);
+}
+
+/* 멀티 선택 결과를 RACE.series 에 commit. 기존 시리즈의 color/icon 보존,
+   새 종목은 default state 로 추가. 선택 순서 = 노출 순서. */
+async function applyMultiSelection() {
+  const syms = Array.from(_pickerCtx.selected).slice(0, MAX_SERIES);
+  if (!syms.length) return;
+  const oldBySymbol = new Map(RACE.series.map(s => [s.symbol, s]));
+  RACE.series = syms.map((sym, idx) => {
+    const old = oldBySymbol.get(sym);
+    if (old) return old;   // 기존 color/icon 보존
+    const entry = MANIFEST.tickers[sym] || {};
+    return {
+      name:   entry.name || sym,
+      symbol: sym,
+      color:  DEFAULT_COLORS[idx % DEFAULT_COLORS.length],
+      icon:   { type: 'auto', value: null },
+      values: []
+    };
+  });
+  _closeSymbolPicker();
+
+  // 새 시리즈 세트로 교체했으므로 play 상태 완전 초기화 (이전 race 잔여 상태 제거).
+  // 이게 없으면 progress / playing / finishedAt 등이 stuck 상태로 남아 다음 play 가 안 됨.
+  playing    = false;
+  progress   = 0;
+  lastTime   = 0;
+  finishedAt = null;
+  yMinSmooth = null; yMaxSmooth = null; xMaxSmooth = null;
+  if (frameEl) frameEl.classList.remove('finished');
+
+  await loadSeriesData();
+  _refreshSeriesColors();
+  syncTitleFromSeries();
+  refreshDisplaySeries();
+  renderSeriesRows();
+  // 모달 close 후 layout 변동 가능 — ECharts 컨테이너 크기 재측정
+  if (chart && typeof chart.resize === 'function') {
+    try { chart.resize(); } catch {}
+  }
+  render();
+  console.log('[apply] commit 완료 — series=', RACE.series.length,
+              'X_MAX=', X_MAX, 'displayDates=', displayDates.length);
+}
+
+/* picker 모달 이벤트 바인딩 — 3중 안전망:
+   (1) 직접 바인딩 (closeBtn.addEventListener 등) — 가장 빠른 경로
+   (2) 다이얼로그 자체에 delegated 핸들러 — (1) 이 실패해도 catch
+   (3) backdrop 클릭으로 닫기
+   single-init 플래그로 중복 부착 방지. */
+let _pickerEventsBound = false;
+function _bindSymbolPickerEvents() {
+  if (_pickerEventsBound) return;
+  const dlg       = document.getElementById('symbolPicker');
+  const closeBtn  = document.getElementById('pickerClose');
+  const searchEl  = document.getElementById('pickerSearch');
+  const applyBtn  = document.getElementById('pickerApplyBtn');
+  const cancelBtn = document.getElementById('pickerCancelBtn');
+  const clearBtn  = document.getElementById('pickerClearBtn');
+  // 필수 요소 하나라도 없으면 DOM 아직 안 만들어진 것 — 부착 skip (다음 호출에 재시도)
+  if (!dlg || !closeBtn) return;
+  _pickerEventsBound = true;
+
+  // (1) 직접 바인딩 — 표준 경로
+  closeBtn.addEventListener('click', (e) => {
+    e.preventDefault(); e.stopPropagation();
+    _closeSymbolPicker();
+  });
+  if (cancelBtn) cancelBtn.addEventListener('click', (e) => {
+    e.preventDefault(); e.stopPropagation();
+    _closeSymbolPicker();
+  });
+  if (applyBtn) applyBtn.addEventListener('click', (e) => {
+    e.preventDefault(); e.stopPropagation();
+    applyMultiSelection();
+  });
+  if (clearBtn) clearBtn.addEventListener('click', (e) => {
+    e.preventDefault(); e.stopPropagation();
+    _pickerCtx.selected.clear();
+    _renderPicker();
+  });
+  if (searchEl) searchEl.addEventListener('input', () => {
+    _pickerCtx.query = searchEl.value || '';
+    _renderPicker();
+  });
+
+  // (2) Delegated fallback — 다이얼로그 자체에 캡처 단계 click 핸들러.
+  //     (1) 의 직접 바인딩이 fire 안 되는 환경/타이밍 이슈 대비.
+  dlg.addEventListener('click', (e) => {
+    const t = e.target;
+    if (!t || !t.closest) return;
+    // backdrop 클릭 (target === dialog 본체) → 닫기
+    if (t === dlg && dlg.open) { _closeSymbolPicker(); return; }
+    // 액션 버튼 fallback (closest 로 nested children 까지 포함)
+    if (t.closest('#pickerClose'))      { _closeSymbolPicker(); return; }
+    if (t.closest('#pickerCancelBtn'))  { _closeSymbolPicker(); return; }
+    if (t.closest('#pickerApplyBtn'))   { applyMultiSelection(); return; }
+    if (t.closest('#pickerClearBtn'))   { _pickerCtx.selected.clear(); _renderPicker(); return; }
+  });
+
+  // (3) ESC 키는 <dialog> 가 native 로 close 처리. cancel 이벤트 fired → close.
+  //     별도 wiring 불필요.
+}
+
+/* 시리즈 i 의 symbol 변경 — 드롭다운/picker 양쪽에서 공유. */
+async function _setSeriesSymbol(i, sym) {
+  RACE.series[i].symbol = sym || null;
+  const entry = sym ? MANIFEST.tickers[sym] : null;
+  // 드롭다운/picker 가 이름의 source-of-truth — 항상 동기화
+  RACE.series[i].name = entry ? entry.name : '';
+  // 새 종목 CSV 로드 + 공통 타임라인 재정렬
+  await loadSeriesData();
+  _refreshSeriesColors();   // 새 symbol 의 브랜드 컬러 자동 적용
+  syncTitleFromSeries();    // 제목 자동 갱신
+  yMinSmooth = null; yMaxSmooth = null;
+  refreshDisplaySeries();
+  renderSeriesRows();
+  render();
+}
+
+function renderSeriesRows() {
+  // 사이드바 진입 버튼의 현재 선택 개수 뱃지 동기화
+  const pickCountEl = document.getElementById('seriesPickCount');
+  if (pickCountEl) {
+    const validCount = RACE.series.filter(s => s.symbol).length;
+    pickCountEl.textContent = `${validCount}개`;
+  }
+
+  // 개편 후: 심볼 자체는 picker 모달에서만 변경. row 는 read-only 디스플레이 +
+  // 색/아이콘/삭제만 조작. 더 컴팩트, 한눈에 보임.
   seriesListEl.innerHTML = RACE.series.map((s, i) => {
     const entry = s.symbol && MANIFEST.tickers[s.symbol];
     const hasData = entry && entry.status === 'ok' && entry.count > 0;
     let tag;
-    if (!entry) {
-      tag = '<span class="series-warn" title="종목을 선택해주세요">⚠</span>';
-    } else if (!hasData) {
-      tag = '<span class="series-warn" title="데이터 없음 — 📦 데이터 페이지에서 다운로드/업로드 필요">⚠</span>';
-    } else {
-      tag = '<span class="series-ok" title="데이터 정상">●</span>';
-    }
-    const opts = grouped.map(([cat, items]) => {
-      const meta  = _catMeta(cat);
-      const inner = items.map(t => {
-        const empty = (t.status !== 'ok' || !t.count) ? ' (데이터 없음)' : '';
-        return `<option value="${t.symbol}" ${t.symbol === s.symbol ? 'selected' : ''}>${t.name} (${t.symbol})${empty}</option>`;
-      }).join('');
-      return `<optgroup label="${meta.badge} ${meta.label}">${inner}</optgroup>`;
-    }).join('');
+    if (!entry)        tag = '<span class="series-warn" title="종목 선택 안 됨">⚠</span>';
+    else if (!hasData) tag = '<span class="series-warn" title="데이터 없음">⚠</span>';
+    else               tag = '<span class="series-ok"  title="데이터 정상">●</span>';
+
+    const sbIconHtml = entry
+      ? _iconPreviewHTML({ type: 'auto', value: null }, s.color, s.symbol, s.name)
+      : '<span class="sb-empty-icon">·</span>';
+    const dispName = entry ? _seriesDisplayName(s) : '';
+    const sbLabel = entry
+      ? `<span class="sb-label">${_escHtml(dispName || entry.name)}
+           <span style="opacity:.5;font-weight:500">(${entry.symbol})</span>
+         </span>`
+      : `<span class="sb-label sb-empty">— 미선택 —</span>`;
     const iconHtml = _iconPreviewHTML(s.icon, s.color, s.symbol, s.name);
     return `
       <div class="series-row" data-i="${i}">
-        <input type="color" class="js-color" value="${s.color}" title="라인 색" />
-        <select class="js-symbol" title="비교 종목">
-          <option value="">— 종목 선택 —</option>
-          ${opts}
-        </select>
+        <input type="color" class="js-color" value="${s.color}" title="라인 색 변경" />
+        <div class="js-symbol-display" style="--sb-color:${s.color}">
+          <span class="sb-icon">${sbIconHtml}</span>
+          ${sbLabel}
+        </div>
         <button type="button" class="js-icon-btn" title="끝점 아이콘 변경">${iconHtml}</button>
         ${tag}
         <button type="button" class="btn-remove js-remove" title="삭제">×</button>
@@ -2808,27 +3477,6 @@ function renderSeriesRows() {
     row.querySelector('.js-color').addEventListener('input', (e) => {
       RACE.series[i].color = e.target.value;
       if (INVESTMENT.enabled && displaySeries[i]) displaySeries[i].color = e.target.value;
-      render();
-    });
-
-    row.querySelector('.js-symbol').addEventListener('change', async (e) => {
-      const sym = e.target.value;
-      RACE.series[i].symbol = sym || null;
-      const entry = sym ? MANIFEST.tickers[sym] : null;
-      // 🚀 드롭다운이 곧 이름의 source-of-truth — 항상 동기화
-      if (entry) {
-        RACE.series[i].name = entry.name;
-      } else {
-        RACE.series[i].name = '';
-      }
-      // 새 종목 CSV 로드 + 공통 타임라인 재정렬
-      await loadSeriesData();
-      _refreshSeriesColors();   // 새 symbol 의 브랜드 컬러 자동 적용
-      // 제목 자동 갱신 (예: 나스닥 vs 테슬라)
-      syncTitleFromSeries();
-      yMinSmooth = null; yMaxSmooth = null;
-      refreshDisplaySeries();
-      renderSeriesRows();
       render();
     });
 
@@ -2872,26 +3520,42 @@ function addSeries() {
     render();
   });
 }
-addSeriesBtn.addEventListener('click', addSeries);
+// 레거시: btn-add-series 는 제거됨 (멀티 선택 패턴으로 통합). 안전 가드만 유지.
+if (addSeriesBtn) addSeriesBtn.addEventListener('click', addSeries);
+
+// 신규 메인 진입 — 사이드바 02 단계 '📊 비교 종목 선택' 버튼 → 멀티 선택 picker 열기
+const pickSeriesBtn = document.getElementById('btn-pick-series');
+if (pickSeriesBtn) pickSeriesBtn.addEventListener('click', () => openSymbolPicker());
 
 /* =========================================================
    인기 비교 주제 프리셋 — 한 클릭으로 종목/기간/투자금 적용
    ========================================================= */
+/* ⚠️ amount 는 USD ($) 단위. 300 = $300 / 1000 = $1000.
+   (KO 출력 시 자동 × 1000 → 원 환산). */
 const PRESETS = [
-  { icon: '🇺🇸🇰🇷', label: 'S&P500 vs 코스피',  series: ['sp500', 'kospi'],  amount: 300000, start: '2010-01' },
-  { icon: '🇺🇸💻',  label: 'S&P500 vs 나스닥',  series: ['sp500', 'nasdaq'], amount: 300000, start: '2010-01' },
-  { icon: '🚗⚡',   label: '테슬라 vs S&P500',  series: ['tsla',  'sp500'],  amount: 300000, start: '2015-01' },
-  { icon: '🔥🚀',   label: '엔비디아 vs S&P500', series: ['nvda',  'sp500'],  amount: 1000000, start: '2016-05',
+  { icon: '🇺🇸🇰🇷', label: 'S&P500 vs 코스피',  series: ['sp500', 'kospi'],  amount: 300,  start: '2010-01' },
+  { icon: '🇺🇸💻',  label: 'S&P500 vs 나스닥',  series: ['sp500', 'nasdaq'], amount: 300,  start: '2010-01' },
+  { icon: '🚗⚡',   label: '테슬라 vs S&P500',  series: ['tsla',  'sp500'],  amount: 300,  start: '2015-01' },
+  { icon: '🔥🚀',   label: '엔비디아 vs S&P500', series: ['nvda',  'sp500'],  amount: 1000, start: '2016-05',
     title: '10년 전\n엔비디아에\n투자했다면?' },
-  { icon: '₿📈',   label: 'BTC vs S&P500',    series: ['btc',   'sp500'],  amount: 1000000, start: '2016-05',
+  { icon: '₿📈',   label: 'BTC vs S&P500',    series: ['btc',   'sp500'],  amount: 1000, start: '2016-05',
     title: '10년 전\n비트코인에\n투자했다면?' },
-  { icon: '₿💻',   label: 'BTC vs 나스닥',    series: ['btc',   'nasdaq'], amount: 1000000, start: '2016-05' },
-  { icon: '🇰🇷💻',  label: '코스피 vs 나스닥',  series: ['kospi', 'nasdaq'], amount: 300000, start: '2010-01' },
-  { icon: '🔥📈',   label: '포켓몬카드 vs S&P', series: ['pokemon_charizard', 'sp500'], amount: 300000, start: '2017-01' },
-  { icon: '₿🥇',    label: '비트코인 vs 금',    series: ['bitcoin', 'gold'], amount: 300000, start: '2017-01' },
+  { icon: '₿💻',   label: 'BTC vs 나스닥',    series: ['btc',   'nasdaq'], amount: 1000, start: '2016-05' },
+  { icon: '🇰🇷💻',  label: '코스피 vs 나스닥',  series: ['kospi', 'nasdaq'], amount: 300,  start: '2010-01' },
+  { icon: '🔥📈',   label: '포켓몬카드 vs S&P', series: ['pokemon_charizard', 'sp500'], amount: 300, start: '2017-01' },
+  { icon: '₿🥇',    label: '비트코인 vs 금',    series: ['bitcoin', 'gold'], amount: 300, start: '2017-01' },
   /* ⚽ 스포츠 — DCA 무관, 누적 골 레이스. applyPreset 이 sports mode 감지 시 자동으로
      INVESTMENT 비활성 + 단위 '골' 로 전환 (이후 sports preset 추가도 같은 패턴) */
-  { icon: '⚽🐐',   label: '호날두 vs 메시',    series: ['ronaldo', 'messi'], amount: 0, start: '2002-08', mode: 'goals' }
+  { icon: '⚽🐐',   label: '호날두 vs 메시',    series: ['ronaldo', 'messi'], amount: 0, start: '2002-08', mode: 'goals' },
+
+  /* 📺 YouTube 구독자 레이스 — applyPreset 이 value_mode='count' 감지 시 자동으로
+     INVESTMENT 비활성화. start 는 모든 시리즈가 데이터를 갖는 가장 이른 월. */
+  { icon: '🎬⚔️',  label: 'MrBeast vs PewDiePie vs T-Series',
+    series: ['yt_mrbeast', 'yt_pewdiepie', 'yt_tseries'],
+    amount: 0, start: '2017-12' },
+  { icon: '📺🏆',  label: 'Top YouTube Channels',
+    series: ['yt_mrbeast', 'yt_tseries', 'yt_pewdiepie', 'yt_cocomelon', 'yt_likenastya'],
+    amount: 0, start: '2022-08' }
 ];
 
 function _presetIsReady(p) {
@@ -3105,6 +3769,54 @@ function bindLiveInputs() {
   if (shortsSafeInput) shortsSafeInput.addEventListener('change', () => {
     frameEl.classList.toggle('show-safe', shortsSafeInput.checked);
   });
+
+  /* 🎯 녹화 영역 가이드 — body 에 .show-record-area 추가/제거.
+     동기 대상 (둘 다 같은 상태 공유):
+       - 사이드바 checkbox  (#inp-show-record-area)
+       - 프레임 상단 pill   (#recAreaToggleTop)
+     기본값: ON (사용자가 명시적으로 OFF 한 적 없으면 표시). localStorage 영속. */
+  const recordAreaInput = document.getElementById('inp-show-record-area');
+  const recordAreaPill  = document.getElementById('recAreaToggleTop');
+  const applyRecordArea = (on) => {
+    document.body.classList.toggle('show-record-area', on);
+    if (recordAreaInput) recordAreaInput.checked = on;
+    if (recordAreaPill)  recordAreaPill.setAttribute('aria-pressed', on ? 'true' : 'false');
+    try { localStorage.setItem('ir_show_record_area', on ? '1' : '0'); } catch {}
+  };
+  // 초기값 — localStorage 가 명시적으로 '0' 이 아니면 ON (기본 표시)
+  let recordAreaOn = true;
+  try {
+    const saved = localStorage.getItem('ir_show_record_area');
+    if (saved === '0') recordAreaOn = false;
+  } catch {}
+  applyRecordArea(recordAreaOn);
+
+  if (recordAreaInput) {
+    recordAreaInput.addEventListener('change', () => applyRecordArea(recordAreaInput.checked));
+  }
+  if (recordAreaPill) {
+    recordAreaPill.addEventListener('click', () => {
+      applyRecordArea(recordAreaPill.getAttribute('aria-pressed') !== 'true');
+    });
+  }
+
+  /* 🏷️ 브랜드 워터마크 — 기본 ON. body 에 .hide-brand 클래스로 OFF 처리.
+     체크박스는 '표시' 의미라 unchecked → hide-brand 추가. localStorage 영속. */
+  const brandInput = document.getElementById('inp-show-brand');
+  if (brandInput) {
+    try {
+      const saved = localStorage.getItem('ir_show_brand');
+      // 기본값: ON (saved === '0' 일 때만 OFF)
+      const on = saved !== '0';
+      brandInput.checked = on;
+      document.body.classList.toggle('hide-brand', !on);
+    } catch {}
+    brandInput.addEventListener('change', () => {
+      const on = brandInput.checked;
+      document.body.classList.toggle('hide-brand', !on);
+      try { localStorage.setItem('ir_show_brand', on ? '1' : '0'); } catch {}
+    });
+  }
 }
 
 /* =========================================================
@@ -3477,17 +4189,20 @@ async function detectServer() {
 /* 카테고리 표시 메타 — 키: manifest 의 category 값
    (label = 그룹 헤더, badge = 작은 한 글자 뱃지) */
 const CATEGORY_META = {
-  stock:     { label: '주식',     badge: '📈' },
-  etf:       { label: 'ETF',      badge: '📊' },
-  crypto:    { label: '암호화폐', badge: '🪙' },
-  commodity: { label: '원자재',   badge: '🥇' },
-  card:      { label: '카드',     badge: '🃏' },
-  sports:    { label: '스포츠',   badge: '⚽' },
-  watch:     { label: '시계',     badge: '⌚' },
-  art:       { label: '예술품',   badge: '🎨' },
-  other:     { label: '기타',     badge: '📦' }
+  stock:      { label: '주식',       badge: '📈' },
+  etf:        { label: 'ETF',        badge: '📊' },
+  crypto:     { label: '암호화폐',   badge: '🪙' },
+  commodity:  { label: '원자재',     badge: '🥇' },
+  realestate: { label: '부동산',     badge: '🏠' },
+  youtube:    { label: 'YouTube',    badge: '📺' },
+  demo:       { label: '인구통계',   badge: '👶' },
+  sports:     { label: '스포츠',     badge: '⚽' },
+  card:       { label: '카드',       badge: '🃏' },
+  watch:      { label: '시계',       badge: '⌚' },
+  art:        { label: '예술품',     badge: '🎨' },
+  other:      { label: '기타',       badge: '📦' }
 };
-const CATEGORY_ORDER = ['stock', 'etf', 'crypto', 'commodity', 'card', 'sports', 'watch', 'art', 'other'];
+const CATEGORY_ORDER = ['stock', 'etf', 'crypto', 'commodity', 'realestate', 'youtube', 'demo', 'sports', 'card', 'watch', 'art', 'other'];
 
 function _catMeta(cat) {
   return CATEGORY_META[cat] || CATEGORY_META.other;
@@ -3969,11 +4684,22 @@ const I18N = {
     titleMonthlyShort:  (amt, period) => `매월 ${amt}씩\n${period} 모았다면?`,
     titleLumpInvest:    (amt, period) => `${period} 전\n${amt}을\n넣었다면?`,
     titleSports:        (a, b)        => `${a} vs ${b}\n누적 골\n레이스`,
+    /* rate 모드 (출산률·인구통계 등 무차원 지표) — 2/3개 시리즈 모두 지원 */
+    titleRate:          (names)       => names.length >= 3
+                                       ? `${names[0]} vs ${names[1]} vs ${names[2]}\n출산률 비교`
+                                       : `${names[0]} vs ${names[1] || ''}\n출산률 비교`,
+    /* absolute 모드 (집값 등 USD 절대 가격) — 4개국 비교 hook */
+    titleAbsolute:      (years)       => `${years}년간\n집값이 가장\n비싼 나라는?`,
+    /* count 모드 (구독자수 등) — YouTube 채널 레이스 hook */
+    titleCount:         (years)       => `${years}년간\nYouTube\n구독자 레이스`,
     titleFallback:      '투자 비교',
 
     /* 콘텐츠 도구 — 풀 텍스트 */
     contentSubtitleInvest: (year, amt) => `${year}년부터 매월 ${amt} 투자 기준`,
     contentSubtitleSports: '누적 골 레이스',
+    contentSubtitleRate:   (year)      => `${year}년부터 합계출산률 추이`,
+    contentSubtitleAbsolute: (year)    => `${year}년부터 평균 집값 변화 (USD)`,
+    contentSubtitleCount:    (year)    => `${year}년부터 YouTube 구독자 변화`,
 
     /* 라벨 / 단어 */
     vs:           'VS',
@@ -3985,10 +4711,20 @@ const I18N = {
     ctaInvestment:'▶ 투자 결과 보기',
     ctaSports:    '▶ 골 레이스 시작',
     ctaRanking:   '▶ 레이스 시작',
+    ctaRate:      '▶ 출산률 비교 시작',
+    ctaAbsolute:  '▶ 집값 비교 시작',
+    ctaCount:     '▶ 구독자 레이스 시작',
     saveBtn:      '🎬 그래프 녹화',
     saveBusy:     '영상 생성중...',
     copyBtn:      '복사',
     copyDone:     '복사됨',
+
+    /* 모바일 sticky 하단 — 좌(재생 토글) + 우(처음부터) */
+    mobilePlay:    '▶ 재생',
+    mobilePause:   '⏸ 일시정지',
+    mobileResume:  '▶ 이어서 재생',
+    mobileReplay:  '▶ 다시 재생',
+    mobileRestart: '↺ 처음부터',
 
     /* 콘텐츠 도구 카드 라벨 */
     labelTools:    '콘텐츠 도구',
@@ -4007,6 +4743,9 @@ const I18N = {
       investment: ['#투자', '#재테크', '#적립식투자', '#장기투자'],
       sports:     ['#스포츠', '#기록', '#레전드'],
       ranking:    ['#랭킹', '#비교'],
+      rate:       ['#출산율', '#인구', '#저출산', '#인구절벽'],
+      absolute:   ['#부동산', '#집값', '#재테크', '#해외부동산'],
+      count:      ['#유튜브', '#구독자', '#유튜버', '#YouTube'],
     },
   },
 
@@ -4015,10 +4754,18 @@ const I18N = {
     titleMonthlyShort:  (amt, period) => `If You Invested\n${amt} for ${period}`,
     titleLumpInvest:    (amt, period) => `If You Invested\n${amt}\n${period} Ago`,
     titleSports:        (a, b)        => `${a} vs ${b}\nCumulative Goals\nRace`,
+    titleRate:          (names)       => names.length >= 3
+                                       ? `${names[0]} vs ${names[1]} vs ${names[2]}\nFertility Rate`
+                                       : `${names[0]} vs ${names[1] || ''}\nFertility Rate`,
+    titleAbsolute:      (years)       => `Which Country Has\nthe Priciest Homes?\n(${years} Years)`,
+    titleCount:         (years)       => `YouTube Subscriber\nRace\n(${years} Years)`,
     titleFallback:      'Investment Race',
 
     contentSubtitleInvest: (year, amt) => `${amt} monthly DCA from ${year}`,
     contentSubtitleSports: 'Cumulative Goals Race',
+    contentSubtitleRate:   (year)      => `Total Fertility Rate trend since ${year}`,
+    contentSubtitleAbsolute: (year)    => `Average home prices since ${year} (USD)`,
+    contentSubtitleCount:    (year)    => `YouTube subscribers since ${year}`,
 
     vs:           'VS',
     win:          'WIN',
@@ -4028,10 +4775,19 @@ const I18N = {
     ctaInvestment:'▶ Watch Investment Race',
     ctaSports:    '▶ Start Goal Race',
     ctaRanking:   '▶ Start Race',
+    ctaRate:      '▶ Compare Fertility Rates',
+    ctaAbsolute:  '▶ Compare Home Prices',
+    ctaCount:     '▶ Start Subscriber Race',
     saveBtn:      '🎬 Record Video',
     saveBusy:     'Generating...',
     copyBtn:      'Copy',
     copyDone:     'Copied',
+
+    mobilePlay:    '▶ Play',
+    mobilePause:   '⏸ Pause',
+    mobileResume:  '▶ Resume',
+    mobileReplay:  '▶ Replay',
+    mobileRestart: '↺ Restart',
 
     labelTools:    'Content Tools',
     labelTitle:    'Recommended Title',
@@ -4047,6 +4803,9 @@ const I18N = {
       investment: ['#Investing', '#StockMarket', '#DCA', '#LongTermInvesting'],
       sports:     ['#Sports', '#Stats', '#Legend'],
       ranking:    ['#Ranking', '#Compare'],
+      rate:       ['#FertilityRate', '#Demographics', '#PopulationCrisis'],
+      absolute:   ['#RealEstate', '#HomePrices', '#PropertyMarket', '#Housing'],
+      count:      ['#YouTube', '#Subscribers', '#YouTubers', '#Shorts'],
     },
   },
 };
@@ -4121,30 +4880,34 @@ document.addEventListener('click', (e) => {
   applyLanguageToUI();
 });
 
-/* 통화 포맷 — 한국어: formatMoney (만원/억 변환).
-   영어: KRW 값을 1000 으로 나눠 USD 근사 (사용자 정책: 100만원 ≈ $1,000 / 1억 ≈ $100K).
-   - amountFmtShort : Y축 / 끝점 라벨용 짧은 abbr ($1K / $100K / $1.2M)
-   - amountFmtFull  : 제목/부제 같은 풀 텍스트용 ($1,000 / $100,000 / $1.2M) */
+/* 통화 포맷 — INVESTMENT.amount 단위가 USD ($) 로 통일됨 (2026-06).
+   따라서 모든 portfolio_value / Y축 값도 USD-기반.
+   - en: $v 그대로 abbr ($1K / $100K / $1.2M)
+   - ko: v × 1000 → KRW (1$ ≈ 1000원 근사) 후 formatMoney
+   - amountFmtShort : Y축 / 끝점 라벨용 짧은 abbr
+   - amountFmtFull  : 제목/부제 같은 풀 텍스트용 ($1,000 / $100,000) */
+const _USD_TO_KRW = 1000;   // 1$ ≈ 1000원 근사 (Shorts 컨텐츠용 단순 환산)
+
 function _amountFmtShort(v) {
   if (_currentLang() === 'en') {
-    const n = Math.round(v / 1000);
+    const n = Math.round(v);
     const abs = Math.abs(n);
     if (abs >= 1_000_000_000) return '$' + (n / 1_000_000_000).toFixed(2).replace(/\.?0+$/, '') + 'B';
     if (abs >= 1_000_000)     return '$' + (n / 1_000_000).toFixed(2).replace(/\.?0+$/, '') + 'M';
     if (abs >= 1_000)         return '$' + (n / 1_000).toFixed(1).replace(/\.?0+$/, '') + 'K';
     return '$' + n;
   }
-  return formatMoney(v, RACE.unit);
+  return formatMoney(v * _USD_TO_KRW, RACE.unit);
 }
 function _amountFmtFull(v) {
   if (_currentLang() === 'en') {
-    const n = Math.round(v / 1000);
+    const n = Math.round(v);
     const abs = Math.abs(n);
     if (abs >= 1_000_000_000) return '$' + (n / 1_000_000_000).toFixed(2).replace(/\.?0+$/, '') + 'B';
     if (abs >= 1_000_000)     return '$' + (n / 1_000_000).toFixed(2).replace(/\.?0+$/, '') + 'M';
     return '$' + n.toLocaleString();
   }
-  return formatMoney(v, RACE.unit);
+  return formatMoney(v * _USD_TO_KRW, RACE.unit);
 }
 
 /* 기간 문자열 — lang 별:
@@ -4258,6 +5021,29 @@ const SERIES_TAGS = {
   oil:               ['#원유',     '#오일',     '#원자재'],
   gas:               ['#천연가스', '#가스',     '#원자재'],
 
+  // 인구통계 (TFR)
+  kr_birth:          ['#출산율',   '#한국출산율', '#인구절벽'],
+  cn_birth:          ['#출산율',   '#중국출산율', '#인구문제'],
+  jp_birth:          ['#출산율',   '#일본출산율', '#저출산'],
+
+  // 부동산 (집값)
+  us_house:          ['#미국집값', '#부동산',   '#미국부동산'],
+  hk_house:          ['#홍콩집값', '#부동산',   '#홍콩부동산'],
+  uk_house:          ['#영국집값', '#부동산',   '#런던집값'],
+  au_house:          ['#호주집값', '#부동산',   '#시드니집값'],
+
+  // YouTube
+  yt_mrbeast:        ['#MrBeast', '#유튜브', '#유튜버'],
+  yt_tseries:        ['#TSeries', '#유튜브', '#인도음악'],
+  yt_pewdiepie:      ['#PewDiePie', '#유튜브', '#게이밍'],
+  yt_cocomelon:      ['#Cocomelon', '#유튜브', '#키즈'],
+  yt_likenastya:     ['#LikeNastya', '#유튜브', '#키즈'],
+  yt_kidsdiana:      ['#KidsDiana', '#유튜브', '#키즈'],
+  yt_setindia:       ['#SETIndia', '#유튜브', '#인도TV'],
+  yt_vladniki:       ['#VladandNiki', '#유튜브', '#키즈'],
+  yt_zeemusic:       ['#ZeeMusic', '#유튜브', '#인도음악'],
+  yt_wwe:            ['#WWE', '#유튜브', '#프로레슬링'],
+
   // 카드 / 스포츠
   pokemon_charizard: ['#포켓몬카드', '#리자몽', '#PSA10'],
   ronaldo:           ['#호날두',   '#CR7',      '#축구'],
@@ -4331,6 +5117,23 @@ const SERIES_TAGS_EN = {
   copper:  ['#Copper', '#Commodities'],
   oil:     ['#Oil', '#Crude', '#Commodities'],
   gas:     ['#NaturalGas', '#Commodities'],
+  kr_birth:['#FertilityRate', '#KoreaBirthRate', '#PopulationCrisis'],
+  cn_birth:['#FertilityRate', '#ChinaBirthRate', '#Demographics'],
+  jp_birth:['#FertilityRate', '#JapanBirthRate', '#LowBirthRate'],
+  us_house:['#USHousing', '#RealEstate', '#HomePrice'],
+  hk_house:['#HongKongHousing', '#RealEstate', '#PropertyMarket'],
+  uk_house:['#UKHousing', '#LondonHomePrice', '#RealEstate'],
+  au_house:['#SydneyHousing', '#AustralianRealEstate', '#HomePrice'],
+  yt_mrbeast:    ['#MrBeast', '#YouTube', '#YouTubers'],
+  yt_tseries:    ['#TSeries', '#YouTube', '#IndianMusic'],
+  yt_pewdiepie:  ['#PewDiePie', '#YouTube', '#Gaming'],
+  yt_cocomelon:  ['#Cocomelon', '#YouTube', '#KidsContent'],
+  yt_likenastya: ['#LikeNastya', '#YouTube', '#KidsContent'],
+  yt_kidsdiana:  ['#KidsDiana', '#YouTube', '#KidsContent'],
+  yt_setindia:   ['#SETIndia', '#YouTube', '#IndianTV'],
+  yt_vladniki:   ['#VladandNiki', '#YouTube', '#KidsContent'],
+  yt_zeemusic:   ['#ZeeMusic', '#YouTube', '#Bollywood'],
+  yt_wwe:        ['#WWE', '#YouTube', '#ProWrestling'],
   pokemon_charizard: ['#PokemonCards', '#Charizard', '#PSA10'],
   ronaldo: ['#Ronaldo', '#CR7', '#Football'],
   messi:   ['#Messi', '#MESSI', '#Football'],
@@ -4405,6 +5208,31 @@ function getContentSubtitle() {
   const dict = I18N[_currentLang()] || I18N.ko;
   if (mode === 'sports') {
     return dict.contentSubtitleSports;
+  }
+  if (mode === 'rate') {
+    // rate 모드 — 데이터 시작 연도 기준 (RACE.dates[0])
+    const firstYM = (RACE.dates && RACE.dates[0]) || '';
+    const year    = firstYM ? firstYM.slice(0, 4) : '';
+    if (year && typeof dict.contentSubtitleRate === 'function') {
+      return dict.contentSubtitleRate(year);
+    }
+    return '';
+  }
+  if (mode === 'absolute') {
+    const firstYM = (RACE.dates && RACE.dates[0]) || '';
+    const year    = firstYM ? firstYM.slice(0, 4) : '';
+    if (year && typeof dict.contentSubtitleAbsolute === 'function') {
+      return dict.contentSubtitleAbsolute(year);
+    }
+    return '';
+  }
+  if (mode === 'count') {
+    const firstYM = (RACE.dates && RACE.dates[0]) || '';
+    const year    = firstYM ? firstYM.slice(0, 4) : '';
+    if (year && typeof dict.contentSubtitleCount === 'function') {
+      return dict.contentSubtitleCount(year);
+    }
+    return '';
   }
   if (INVESTMENT.enabled && INVESTMENT.amount > 0) {
     const startD = parseDate(INVESTMENT.startDate);
@@ -4728,6 +5556,11 @@ async function saveVideo() {
       recorder.onstop = () => resolve(new Blob(chunks, { type: mimeType }));
     });
 
+    // 🛡️ 녹화 중 wireframe overlay 강제 제거 — canvas.captureStream 은 HTML 미캡처지만
+    //     사용자가 OS 화면 녹화를 병행할 수 있으므로 안전망. 종료 후 원복.
+    const _safeWasOn = frameEl && frameEl.classList.contains('show-safe');
+    if (_safeWasOn) frameEl.classList.remove('show-safe');
+
     recorder.start();
     reset();
     setTimeout(play, 50);
@@ -4756,6 +5589,9 @@ async function saveVideo() {
     });
 
     const webmBlob = await recordingDone;
+
+    // wireframe overlay 원복 (녹화 종료 — 안전망 해제)
+    if (_safeWasOn && frameEl) frameEl.classList.add('show-safe');
 
     // 4) ffmpeg.wasm 로 mp4 변환 — 여기까지 왔다는 건 _ffmpegLoaded === true
     //    그래도 exec/writeFile 단계에서 실패할 수 있으므로 catch 에 실제 오류 노출.
@@ -4813,6 +5649,8 @@ window.render = render = function() {
 async function init() {
   populateForm();
   bindLiveInputs();
+  // 종목 선택 모달 이벤트 사전 바인딩 — 모달 첫 열기 전에 wiring 완료시켜 안전
+  _bindSymbolPickerEvents();
 
   /* 새 아키텍처: manifest + per-ticker CSV 자동 로드.
      db/ 폴더에 csv 가 있으면 (정적 호스팅이든 server.py 든) 즉시 적용. */

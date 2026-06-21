@@ -33,13 +33,17 @@ body {
   background:
     linear-gradient(180deg, #F7F8FA 0%, #EEF0F3 100%);
   color: var(--text);
+  /* 2026 리디자인 — Apple SF Pro / Inter 우선 (Latin 프리미엄 톤),
+     한글은 Pretendard Variable 으로 폴백. system font stack 만 사용. */
   font-family:
-    'Pretendard Variable', 'Pretendard',
     -apple-system, BlinkMacSystemFont,
+    'SF Pro Display', 'Inter',
+    'Pretendard Variable', 'Pretendard',
     "Apple SD Gothic Neo", "Noto Sans KR",
     "Segoe UI", system-ui, sans-serif;
-  font-feature-settings: "ss05", "ss06";
-  letter-spacing: -0.2px;
+  /* tabular 숫자 + 모던 single-storey 변형 (Inter 의 cv11) */
+  font-feature-settings: "tnum" 1, "ss01" 1, "cv11" 1;
+  letter-spacing: -0.18px;
   /* iOS Safari 주소창/하단바 동적 처리: dvh 우선, 미지원 브라우저는 vh fallback */
   min-height: 100vh;
   min-height: 100dvh;
@@ -241,6 +245,442 @@ html, body { color-scheme: dark; }
 }
 .series-row .series-ok   { color: var(--green); font-size: 12px; text-align: center; }
 .series-row .series-warn { color: #FFA726;     font-size: 12px; text-align: center; cursor: help; }
+
+/* ═══════════════════════════════════════════════════
+   🔍 종목 선택 모달 (picker-modal) — 카드 그리드 + 검색 + 카테고리 칩
+   ═══════════════════════════════════════════════════ */
+.picker-modal {
+  background: rgba(18, 18, 22, 0.92);
+  backdrop-filter: blur(40px) saturate(160%);
+  -webkit-backdrop-filter: blur(40px) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 20px;
+  padding: 0;
+  color: #fff;
+  width: min(900px, 94vw);
+  max-height: 86vh;
+  max-height: 86dvh;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow:
+    0 30px 80px rgba(0, 0, 0, 0.7),
+    0 0 0 1px rgba(255, 255, 255, 0.04) inset;
+  font-family: inherit;
+}
+/* ⚠️ <dialog> 가 닫혀 있을 때 (open 속성 없음) 는 반드시 hidden.
+   기본 user-agent CSS 는 dialog:not([open]) { display:none } 이지만,
+   .picker-modal 에 display: flex 를 무조건 깔면 이 기본 룰이 override 돼서
+   close 후에도 in-flow 로 페이지에 떠 있는 버그가 발생함. → 명시적으로 분리. */
+.picker-modal[open] {
+  display: flex;
+}
+.picker-modal:not([open]) {
+  display: none;
+}
+.picker-modal::backdrop {
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(10px) saturate(150%);
+  -webkit-backdrop-filter: blur(10px) saturate(150%);
+}
+
+/* Header — title + search + close */
+.picker-head {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 18px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0));
+  flex-shrink: 0;
+}
+.picker-head h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: -0.3px;
+}
+.picker-head #pickerSearch {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  color: #fff;
+  font-family: inherit;
+  font-size: 14px;
+  padding: 9px 14px;
+  outline: none;
+  transition: border-color 0.15s, background 0.15s;
+}
+.picker-head #pickerSearch:focus {
+  background: rgba(255, 255, 255, 0.10);
+  border-color: rgba(255, 213, 79, 0.5);
+}
+.picker-head #pickerSearch::placeholder { color: rgba(255, 255, 255, 0.4); }
+.picker-close {
+  appearance: none;
+  border: 0;
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  font-size: 18px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.picker-close:hover { background: rgba(255, 255, 255, 0.12); }
+
+/* Category chips */
+.picker-cats {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 10px 18px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  flex-shrink: 0;
+  scrollbar-width: none;
+}
+.picker-cats::-webkit-scrollbar { display: none; }
+.picker-cats .pc-chip {
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.7);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  padding: 6px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.picker-cats .pc-chip:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+.picker-cats .pc-chip[aria-selected="true"] {
+  background: #FFD54F;
+  color: #1a0e00;
+  border-color: #FFD54F;
+}
+.picker-cats .pc-chip .pc-count {
+  opacity: 0.7;
+  font-weight: 600;
+  margin-left: 4px;
+}
+
+/* Grid of cards */
+.picker-grid {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 14px 18px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 10px;
+  align-content: start;
+  scrollbar-width: thin;
+}
+.picker-grid .pg-empty {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 32px 0;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 13px;
+}
+
+/* Each card */
+.pg-card {
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  color: #fff;
+  border-radius: 12px;
+  padding: 12px 12px 10px;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s, border-color 0.15s, transform 0.06s;
+  position: relative;
+}
+.pg-card:hover {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(255, 213, 79, 0.4);
+}
+.pg-card:active { transform: scale(0.98); }
+.pg-card[aria-selected="true"] {
+  background: rgba(255, 213, 79, 0.12);
+  border-color: #FFD54F;
+  box-shadow: 0 0 0 1px #FFD54F inset, 0 4px 14px rgba(255, 213, 79, 0.15);
+}
+/* 선택된 카드 좌상단 체크 뱃지 — multi-select 시각 피드백 */
+.pg-card .pg-check {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #FFD54F;
+  color: #1a0e00;
+  font-size: 11px;
+  font-weight: 900;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+.pg-card[aria-selected="true"] .pg-check { display: inline-flex; }
+/* MAX_SERIES 도달했을 때 추가 선택 차단 — 비선택 카드는 dimmed + 클릭 비활성 */
+.pg-card.pg-disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+.pg-card .pg-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  font-size: 20px;
+  font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+  background: rgba(255, 255, 255, 0.06);
+  border: 2px solid var(--pg-color, rgba(255, 255, 255, 0.18));
+  flex-shrink: 0;
+  overflow: hidden;
+  line-height: 1;
+}
+.pg-card .pg-icon img {
+  width: 100%; height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+}
+.pg-card .pg-icon .pg-abbr {
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: -0.5px;
+  color: #fff;
+  background: var(--pg-color, rgba(255, 255, 255, 0.18));
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.pg-card .pg-name {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: -0.2px;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.pg-card .pg-symbol {
+  font-size: 10.5px;
+  font-weight: 600;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  color: rgba(255, 255, 255, 0.5);
+  letter-spacing: 0.02em;
+}
+.pg-card .pg-period {
+  font-size: 10.5px;
+  color: rgba(255, 255, 255, 0.42);
+  margin-top: auto;
+}
+.pg-card .pg-status {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  padding: 2px 6px;
+  border-radius: 999px;
+}
+.pg-card .pg-status.ok       { background: rgba(102, 187, 106, 0.18); color: #66BB6A; }
+.pg-card .pg-status.preparing{ background: rgba(255, 167, 38, 0.22); color: #FFA726; }
+.pg-card .pg-status.empty    { background: rgba(239, 83, 80, 0.18);  color: #EF5350; }
+.pg-card .pg-cat-tag {
+  font-size: 9.5px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.55);
+  letter-spacing: 0.02em;
+}
+
+/* Footer — info row + action bar (전체 해제 / 취소 / ✓ 적용) */
+.picker-foot {
+  padding: 10px 18px 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(0deg, rgba(255,255,255,0.02), rgba(255,255,255,0));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.picker-foot .pf-info {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.55);
+  text-align: center;
+}
+.picker-foot .pf-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  align-items: center;
+}
+.pf-btn {
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+  color: #fff;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 9px 14px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, transform 0.06s;
+}
+.pf-btn:hover { background: rgba(255, 255, 255, 0.09); }
+.pf-btn:active { transform: scale(0.98); }
+.pf-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+.pf-clear  { flex: 0 0 auto; color: rgba(255, 255, 255, 0.7); }
+.pf-cancel { flex: 0 0 auto; }
+.pf-apply  {
+  flex: 1 1 auto;
+  background: linear-gradient(135deg, #FFD54F 0%, #FFAA50 100%);
+  color: #1a0e00;
+  border: none;
+  font-weight: 900;
+  letter-spacing: -0.2px;
+  font-size: 14px;
+  box-shadow: 0 4px 14px rgba(255, 170, 80, 0.30);
+}
+.pf-apply:hover { filter: brightness(1.05); }
+
+/* 사이드바 메인 진입 버튼 — '📊 비교 종목 선택' */
+.series-pick-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.series-pick-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: rgba(255, 213, 79, 0.18);
+  color: #FFD54F;
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+/* 종목 read-only 디스플레이 (series-row 내). 심볼 변경은 모달에서만. */
+.js-symbol-display {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  color: #fff;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  text-align: left;
+  overflow: hidden;
+}
+/* 호환: 기존 .js-symbol-btn 클래스 (다른 곳에서 참조될 가능성)는 동일 룩 유지 */
+.js-symbol-btn {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 8px;
+  color: #fff;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+  overflow: hidden;
+  transition: background 0.15s, border-color 0.15s;
+}
+.js-symbol-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 213, 79, 0.35);
+}
+.js-symbol-btn .sb-icon,
+.js-symbol-display .sb-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  font-size: 14px;
+  font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 50%;
+  border: 1.5px solid var(--sb-color, rgba(255, 255, 255, 0.18));
+  overflow: hidden;
+  line-height: 1;
+}
+.js-symbol-btn .sb-icon img,
+.js-symbol-display .sb-icon img { width: 100%; height: 100%; object-fit: cover; }
+.js-symbol-btn .sb-label,
+.js-symbol-display .sb-label {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.js-symbol-btn .sb-empty,
+.js-symbol-display .sb-empty { color: rgba(255, 255, 255, 0.45); font-weight: 600; }
+.js-symbol-btn .sb-caret { color: rgba(255, 255, 255, 0.5); font-size: 11px; }
+.js-symbol-display .sb-empty-icon { font-size: 14px; opacity: 0.4; }
+
+/* 모바일 (max-width: 600px) — 카드 2열, header 컴팩트 */
+@media (max-width: 600px) {
+  .picker-modal { width: 96vw; max-height: 90dvh; border-radius: 16px; }
+  .picker-head { grid-template-columns: 1fr auto; padding: 12px 14px; }
+  .picker-head h2 { grid-column: 1; font-size: 14.5px; }
+  .picker-head #pickerSearch { grid-column: 1 / -1; grid-row: 2; }
+  .picker-close { grid-row: 1; grid-column: 2; }
+  .picker-cats { padding: 8px 12px; }
+  .picker-grid {
+    padding: 12px;
+    grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+    gap: 8px;
+  }
+}
 
 /* ───────────────────────────────────────────────
    📦 DB 모달
@@ -711,6 +1151,9 @@ button.db-action:disabled {
    DOM 제거 없이 시각만 토글 — investment 복귀 시 즉시 원복. */
 body[data-mode="sports"]   .investment-only,
 body[data-mode="ranking"]  .investment-only,
+body[data-mode="rate"]     .investment-only,
+body[data-mode="absolute"] .investment-only,
+body[data-mode="count"]    .investment-only,
 body[data-mode="custom"]   .investment-only { display: none !important; }
 
 .step-hint {
@@ -807,7 +1250,8 @@ button.action.primary:hover {
 
 @media (max-width: 1199px) {
   .mobile-cta-bar {
-    display: block;
+    display: flex;
+    gap: 8px;
     position: fixed;
     left: 0;
     right: 0;
@@ -830,21 +1274,35 @@ button.action.primary:hover {
   .mobile-cta {
     pointer-events: auto;
     display: block;
-    width: 100%;
-    padding: 15px 16px;
+    padding: 15px 14px;
     font-size: 16px;
     font-weight: 800;
     font-family: inherit;
     letter-spacing: -0.3px;
-    color: #1a0e00;
-    background: linear-gradient(135deg, #FFD54F 0%, #FFAA50 100%);
     border: none;
     border-radius: 14px;
+    cursor: pointer;
+    transition: transform 0.08s ease, filter 0.15s ease, box-shadow 0.15s ease;
+  }
+  /* 좌측 — 메인 재생 토글 (노란 그라데이션, 더 큰 비중) */
+  .mobile-cta-primary {
+    flex: 1 1 0;
+    min-width: 0;
+    color: #1a0e00;
+    background: linear-gradient(135deg, #FFD54F 0%, #FFAA50 100%);
     box-shadow:
       0 6px 22px rgba(255, 170, 80, 0.40),
       0 1px 0 rgba(255, 255, 255, 0.45) inset;
-    cursor: pointer;
-    transition: transform 0.08s ease, filter 0.15s ease, box-shadow 0.15s ease;
+  }
+  /* 우측 — 보조 처음부터 (다크 톤, 좁은 폭) */
+  .mobile-cta-secondary {
+    flex: 0 0 auto;
+    min-width: 116px;
+    font-size: 14.5px;
+    color: rgba(255, 255, 255, 0.92);
+    background: rgba(28, 28, 32, 0.92);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
   }
   .mobile-cta:hover  { filter: brightness(1.05); }
   .mobile-cta:active { transform: scale(0.985); }
@@ -1389,6 +1847,41 @@ button.ghost.ghost-warn:hover {
   min-width: 0;
 }
 
+/* 프레임 상단 도구 행 — 언어 토글 + 녹화 영역 토글 가로 배치 */
+.frame-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+/* 🎯 녹화 영역 토글 (프레임 위 즉시 접근). 사이드바의 inp-show-record-area 와 동기.
+   기본 ON. aria-pressed 로 상태 표시. */
+.rec-toggle {
+  appearance: none;
+  border: 1px solid #d8dde6;
+  background: #eef0f4;
+  color: #4a5160;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 6px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s, color 0.15s, border-color 0.15s, box-shadow 0.15s;
+}
+.rec-toggle:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+.rec-toggle[aria-pressed="true"] {
+  background: #ff3b30;
+  border-color: #ff3b30;
+  color: #fff;
+  box-shadow: 0 2px 10px rgba(255, 59, 48, 0.32);
+}
+
 /* 언어 토글 — 프레임 위에 segmented pill.
    사이드바는 한국어 고정(운영자용). 우측 Shorts 출력물(프레임/콘텐츠 도구)만 영문화. */
 .lang-toggle {
@@ -1427,11 +1920,11 @@ button.ghost.ghost-warn:hover {
 }
 
 /* 9:16 프레임 — 실제 YouTube Shorts 앱 기준 Safe Layout 적용 (DevTools 아님).
-   행 4개로 분할:
-     1) safe-top     5%  : 상단 시계/Dynamic Island/검색 아이콘 영역
+   행 4개로 분할 (2026-06 실기기 업로드 후 보정 — 상단 +4%, 하단 -4%):
+     1) safe-top     9%  : 상단 상태바(시계/배터리)/Dynamic Island/검색 아이콘 영역
      2) header       auto: 제목 / 부제 / 프로그레스
      3) chart        1fr : 그래프
-     4) safe-bottom 18%  : 채널명/영상제목/음악/진행바 영역 (실기기 기준 12.5% 부족)
+     4) safe-bottom 14%  : 채널명/영상제목/음악/진행바 영역 (실기기 기준)
    Shorts 우측 31% (좋아요/싫어요/댓글/공유/저장/메뉴) 는 JS 가 끝점 라벨 X 를 69% 로
    clamp 해서 처리. `.frame.show-safe` 클래스로 빨강 오버레이 시각화. */
 .frame {
@@ -1447,7 +1940,7 @@ button.ghost.ghost-warn:hover {
   border-radius: 0;
   overflow: hidden;
   display: grid;
-  grid-template-rows: 5% auto 1fr 18%;
+  grid-template-rows: 8% auto 1fr 13%;
   /* 라이트 사이트 배경 위에 뜬 "다크 영상 카드" — 외곽 hairline + 부드러운 그림자.
      크기/비율/내부 좌표는 변경 없음 — Shorts Safe / 그래프 영역 무영향. */
   box-shadow:
@@ -1478,43 +1971,266 @@ button.ghost.ghost-warn:hover {
 .frame .results.layout-rank { display: none !important; }
 
 .frame.two-series {
-  grid-template-rows: 5% auto 1fr 18%;
+  grid-template-rows: 8% auto 1fr 13%;
 }
 
-/* 📱 Shorts Safe Mode 시각화 — 실제 YouTube 앱 기준 (DevTools 아님).
-   끝점 라벨은 JS 에서 69% 로 clamp. 이 오버레이는 업로드 전 시각 검증용 토글. */
-.frame.show-safe::before {
+/* ═════════════════════════════════════════════════════════════
+   📱 Shorts UI Wireframe Overlay (2026-06 재설계)
+   ─────────────────────────────────────────────────────────────
+   - 실제 YouTube Shorts 앱 UI 를 반투명 흰색 wireframe 으로 모사
+   - 차트나 데이터 라인을 가리지 않음 — 떠 있는 가이드 톤
+   - .frame.show-safe 일 때만 visible. saveVideo 가 임시 제거 (녹화 제외)
+   - 색: rgba(255,255,255, .35~.55) stroke only, 채움 없음
+   ═════════════════════════════════════════════════════════════ */
+.shorts-ui-wire { display: none; }
+.frame.show-safe .shorts-ui-wire {
+  display: block;
+  position: absolute;
+  inset: 0;
+  z-index: 28;        /* endpoint-overlay(30) 보다 살짝 아래 — 라벨/끝점은 위에 */
+  pointer-events: none;
+  color: rgba(255, 255, 255, 0.48);
+  font-family: inherit;
+}
+
+/* 좌상단 미리보기 뱃지 */
+.shorts-ui-wire .suw-badge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  background: rgba(0, 0, 0, 0.55);
+  color: rgba(255, 255, 255, 0.78);
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+/* 상단 — 검색/메뉴 아이콘 */
+.shorts-ui-wire .suw-top {
+  position: absolute;
+  top: 1.2%;
+  right: 2.5%;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.shorts-ui-wire .suw-top .suw-ic { opacity: 0.55; }
+
+/* 우측 액션 컬럼 — 채널/좋아요/싫어요/댓글/공유/메뉴/음악 디스크 */
+.shorts-ui-wire .suw-right {
+  position: absolute;
+  right: 2.5%;
+  bottom: 16%;       /* 하단 정보 영역 위로 */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+.shorts-ui-wire .suw-action {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  opacity: 0.55;
+}
+.shorts-ui-wire .suw-ic { color: rgba(255, 255, 255, 0.7); }
+.shorts-ui-wire .suw-ic-lg { color: rgba(255, 255, 255, 0.85); }
+
+/* 채널 아바타 (큰 동그라미 + 작은 + 마크) */
+.shorts-ui-wire .suw-avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 255, 255, 0.65);
+  background: transparent;
+}
+.shorts-ui-wire .suw-plus {
+  position: relative;
+  margin-top: -10px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.5);
+  color: rgba(20, 20, 22, 0.85);
+  font-size: 11px;
+  font-weight: 900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+/* 좋아요/댓글 카운트 텍스트 */
+.shorts-ui-wire .suw-count {
+  font-size: 10px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.7);
+  letter-spacing: -0.2px;
+}
+
+/* 음악 디스크 — 작은 회전 LP */
+.shorts-ui-wire .suw-music-disc {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 255, 255, 0.55);
+  position: relative;
+  margin-top: 4px;
+  opacity: 0.5;
+}
+.shorts-ui-wire .suw-music-disc::after {
   content: '';
+  position: absolute;
+  inset: 9px;
+  border-radius: 50%;
+  border: 1.2px solid rgba(255, 255, 255, 0.45);
+}
+
+/* 하단 — 채널/구독/제목/음악/진행바 */
+.shorts-ui-wire .suw-bottom {
+  position: absolute;
+  left: 3%;
+  right: 32%;        /* 우측 31% UI 영역 침범 X */
+  bottom: 2%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  opacity: 0.65;
+}
+.shorts-ui-wire .suw-channel-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.shorts-ui-wire .suw-avatar-sm {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1.4px solid rgba(255, 255, 255, 0.65);
+}
+.shorts-ui-wire .suw-handle {
+  font-size: 12px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.85);
+  letter-spacing: -0.2px;
+}
+.shorts-ui-wire .suw-subscribe {
+  font-size: 11px;
+  font-weight: 800;
+  color: rgba(255, 255, 255, 0.92);
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 1.4px solid rgba(255, 255, 255, 0.65);
+  letter-spacing: -0.2px;
+}
+.shorts-ui-wire .suw-title-line {
+  height: 8px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.22);
+  width: 90%;
+}
+.shorts-ui-wire .suw-title-short { width: 55%; }
+.shorts-ui-wire .suw-music-attr {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.6);
+  letter-spacing: -0.1px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.shorts-ui-wire .suw-progress {
+  margin-top: 2px;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 2px;
+  position: absolute;
+  left: -3.1%;         /* 풀폭 — 컨테이너 padding 무시하고 frame 풀폭 */
+  right: -32.4%;
+  bottom: -10px;
+}
+.shorts-ui-wire .suw-progress span {
+  display: block;
+  height: 100%;
+  width: 38%;
+  background: rgba(255, 255, 255, 0.7);
+  border-radius: 2px;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   🎯 녹화 영역 가이드 — body.show-record-area 일 때만 표시.
+   화면 녹화 도구 (macOS ⇧⌘5, Loom 등) 로 캡처할 정확한 영역을
+   viewfinder 코너 마커 + 빨강 외곽선 + 안내 라벨로 명확히 표시.
+   ═══════════════════════════════════════════════════════════ */
+.record-guide { display: none; }
+body.show-record-area .frame {
+  outline: 3px solid #ff3b30;
+  outline-offset: 4px;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.10),
+    0 0 0 8px rgba(255, 59, 48, 0.18),
+    0 0 28px rgba(255, 59, 48, 0.45),
+    0 12px 40px rgba(0, 0, 0, 0.18) !important;
+}
+body.show-record-area .record-guide {
+  display: block;
   position: absolute;
   inset: 0;
   pointer-events: none;
-  z-index: 30;
-  background-image:
-    linear-gradient(rgba(239, 83, 80, 0.20), rgba(239, 83, 80, 0.20)),  /* top */
-    linear-gradient(rgba(239, 83, 80, 0.20), rgba(239, 83, 80, 0.20)),  /* right */
-    linear-gradient(rgba(239, 83, 80, 0.20), rgba(239, 83, 80, 0.20));  /* bottom */
-  background-position: 0 0, 100% 0, 0 100%;
-  background-size:
-    100% 5%,     /* 상단 — 시계/검색 */
-    31%  100%,   /* 우측 — 좋아요/싫어요/댓글/공유/저장/메뉴 (실기기 30~32%) */
-    100% 18%;    /* 하단 — 채널명/영상제목/음악/진행바 (실기기 12.5% 부족) */
-  background-repeat: no-repeat;
+  z-index: 60;
 }
-/* 라벨 (작게, 좌상단/우측중앙/좌하단) */
-.frame.show-safe::after {
-  content: 'UNSAFE';
+.record-guide .rg-corner {
   position: absolute;
-  top: 4px;
+  width: 24px;
+  height: 24px;
+  border: 4px solid #ff3b30;
+}
+.record-guide .rg-tl { top: -2px; left: -2px;    border-right: 0; border-bottom: 0; }
+.record-guide .rg-tr { top: -2px; right: -2px;   border-left: 0;  border-bottom: 0; }
+.record-guide .rg-bl { bottom: -2px; left: -2px; border-right: 0; border-top: 0;    }
+.record-guide .rg-br { bottom: -2px; right: -2px;border-left: 0;  border-top: 0;    }
+.record-guide .rg-label {
+  position: absolute;
+  top: -34px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 31;
-  pointer-events: none;
-  color: rgba(239, 83, 80, 0.95);
-  font-size: 10px;
-  font-weight: 900;
-  letter-spacing: 1.5px;
-  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7);
+  white-space: nowrap;
+  background: #ff3b30;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  padding: 5px 12px;
+  border-radius: 999px;
+  box-shadow: 0 4px 14px rgba(255, 59, 48, 0.4);
 }
+
+/* ═══════════════════════════════════════════════════════════
+   🏷️ 브랜드 워터마크 — 매 영상 우상단 표시.
+   기본 표시. body.hide-brand 클래스 또는 image 로드 실패 시 숨김.
+   위치: 우상단 (Shorts 우측 31% UI 영역 침범하지 않도록 safe-top 9% 안쪽).
+   ═══════════════════════════════════════════════════════════ */
+.brand-watermark {
+  position: absolute;
+  top: 1.2%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: clamp(34px, 8.5%, 52px);
+  height: auto;
+  aspect-ratio: 1 / 1;
+  border-radius: 50%;
+  opacity: 0.92;
+  z-index: 25;
+  pointer-events: none;
+  object-fit: cover;
+  filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.55));
+}
+body.hide-brand .brand-watermark { display: none; }
 
 .frame.finished {
   box-shadow:
@@ -1546,12 +2262,17 @@ button.ghost.ghost-warn:hover {
 .title {
   margin: 0;
   text-align: center;
-  font-size: clamp(24px, 5vw, 42px);
-  font-weight: 900;
-  letter-spacing: -0.04em;
-  line-height: 0.92;
+  /* 2026-06 리디자인 — 모바일 Shorts 우선. 첫 0.5초 내 가독성을 위해 2~3배 확대.
+     기존 clamp(24, 5vw, 42) → 약 2배 (모바일 ~46px, 데스크 ~74px). */
+  font-size: clamp(42px, 11vw, 74px);
+  font-weight: 800;
+  letter-spacing: -0.045em;
+  line-height: 0.94;
   color: #ffffff;
-  text-shadow: 0 0 24px rgba(255, 255, 255, 0.10);
+  /* 글로우 살짝만 — Shorts UI 위에서도 잘 읽히도록 */
+  text-shadow:
+    0 2px 12px rgba(0, 0, 0, 0.55),
+    0 0 20px rgba(255, 255, 255, 0.06);
   word-break: keep-all;
   overflow-wrap: break-word;
   text-wrap: balance;
@@ -1563,6 +2284,7 @@ button.ghost.ghost-warn:hover {
   line-clamp: 3;
   overflow: hidden;
   width: 100%;
+  font-feature-settings: "ss01" 1, "cv11" 1, "tnum" 0;
 }
 
 /* 부제 — 시리즈 색 자동 주입 가능 구조.
@@ -1580,11 +2302,12 @@ button.ghost.ghost-warn:hover {
 }
 .subtitle:empty { display: none; }
 
-/* 자동 생성: 시리즈 이름 (각 색상) + VS (흰색) */
+/* 자동 생성: 시리즈 이름 (각 색상) + VS / • 구분자 (흰색) */
 .subtitle .sub-series {
   /* color 는 JS 가 inline style 로 주입 (시리즈 그래프 색) */
   font-weight: 700;
-  text-shadow: 0 0 10px currentColor;
+  /* 글로우 -40% (10px → 6px) */
+  text-shadow: 0 0 6px currentColor;
 }
 .subtitle .sub-vs {
   color: rgba(255, 255, 255, 0.9);
@@ -1592,6 +2315,18 @@ button.ghost.ghost-warn:hover {
   margin: 0 0.4em;
   text-shadow: none;
   opacity: 1;
+}
+/* 4+ 시리즈 — 짧은 dot 구분자 (• 도트). 'VS' 보다 컴팩트 */
+.subtitle .sub-sep {
+  color: rgba(255, 255, 255, 0.55);
+  font-weight: 700;
+  margin: 0 0.5em;
+  text-shadow: none;
+}
+/* 4+ 시리즈 줄바꿈 wrapper — 가운데 정렬, 줄간 여유 */
+.subtitle .sub-row {
+  display: block;
+  line-height: 1.25;
 }
 
 /* 날짜 — 레퍼런스에는 없음 (X축으로 대체). hidden 으로 숨김 */
@@ -2025,7 +2760,8 @@ button.ghost.ghost-warn:hover {
   width: 10px;
   height: 10px;
   border-radius: 999px;
-  box-shadow: 0 0 10px currentColor;
+  /* 글로우 -40% (10px → 6px) — 네온 유지하되 톤다운 */
+  box-shadow: 0 0 6px currentColor;
 }
 
 .legend-item .name {
@@ -2121,6 +2857,51 @@ button.ghost.ghost-warn:hover {
    - font-size 11px (가이드 10~12)
    - 글로우/그림자 없음 — 시선 끌면 안 됨
    - finished + investment 모드에서만 표시 (JS 토글) */
+/* ═════════════════════════════════════════════════════════════
+   🚀 RACE START 플래시 (인트로) — startRace() 가 0.4초 활성화 후 자동 fade.
+   카운트다운 X, 즉시 race 시작 — Shorts 초반 이탈 방지.
+   ═════════════════════════════════════════════════════════════ */
+.race-start-flash {
+  position: absolute;
+  inset: 0;
+  z-index: 35;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  background: radial-gradient(ellipse at center,
+    rgba(255, 213, 79, 0.18) 0%,
+    rgba(255, 213, 79, 0.06) 35%,
+    rgba(0,0,0,0) 70%);
+}
+.race-start-flash.is-active {
+  display: flex;
+  animation: rsfFade 0.42s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+.race-start-flash .rsf-text {
+  font-size: clamp(40px, 12vw, 84px);
+  font-weight: 900;
+  letter-spacing: -0.04em;
+  color: #fff;
+  text-shadow:
+    0 0 24px rgba(255, 213, 79, 0.55),
+    0 4px 16px rgba(0, 0, 0, 0.55);
+  transform: scale(0.85);
+  opacity: 0;
+  animation: rsfPulse 0.42s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+@keyframes rsfFade {
+  0%   { opacity: 0; }
+  20%  { opacity: 1; }
+  100% { opacity: 0; }
+}
+@keyframes rsfPulse {
+  0%   { transform: scale(0.85); opacity: 0; }
+  30%  { transform: scale(1.08); opacity: 1; }
+  60%  { transform: scale(1);    opacity: 1; }
+  100% { transform: scale(1.02); opacity: 0; }
+}
+
 .principal-end-label {
   position: absolute;
   display: inline-flex;
@@ -2157,14 +2938,23 @@ button.ghost.ghost-warn:hover {
 }
 
 /* 위치 기준점 = icon-inner 의 가운데 (flex 컨테이너 중앙 X). JS 가 left/top 을
-   icon-inner 중심이 데이터 포인트에 정확히 오도록 보정해서 설정한다. */
+   icon-inner 중심이 데이터 포인트에 정확히 오도록 보정해서 설정한다.
+   .flip-left: 아이콘이 우측 영역(>55%)에 있을 때 라벨을 아이콘 좌측에 배치.
+   JS 는 right 를 설정하고 left 를 비워서 컨테이너 우측 끝이 고정됨. */
 .endpoint-icon {
   position: absolute;
   display: flex;
   align-items: center;
   gap: 8px;
   white-space: nowrap;
-  will-change: left, top, transform;
+  will-change: left, right, top, transform;
+}
+.endpoint-icon.flip-left {
+  flex-direction: row-reverse;
+}
+.endpoint-icon.flip-left .icon-meta {
+  text-align: right;
+  align-items: flex-end;
 }
 
 .endpoint-icon .icon-inner {
@@ -2175,10 +2965,11 @@ button.ghost.ghost-warn:hover {
   justify-content: center;
   background: var(--bg-base);
   border: 2px solid currentColor;
+  /* 글로우 -40% (14/22px → 8/13px) — 네온 톤은 유지하되 더 깔끔. */
   box-shadow:
     0 0 0 2px rgba(0, 0, 0, 0.45),
-    0 0 14px currentColor,
-    0 0 22px currentColor;
+    0 0 8px currentColor,
+    0 0 13px currentColor;
   flex-shrink: 0;
   overflow: hidden;
   font-size: 19px;
@@ -2199,9 +2990,10 @@ button.ghost.ghost-warn:hover {
   clip-path: polygon(50% 0%, 95% 25%, 95% 75%, 50% 100%, 5% 75%, 5% 25%);
   border: none;
   box-shadow: none;
+  /* 글로우 -40% (8/14 → 5/8) */
   filter:
-    drop-shadow(0 0 8px currentColor)
-    drop-shadow(0 0 14px currentColor);
+    drop-shadow(0 0 5px currentColor)
+    drop-shadow(0 0 8px currentColor);
 }
 
 .endpoint-icon .icon-inner img {
@@ -2230,6 +3022,20 @@ button.ghost.ghost-warn:hover {
 .endpoint-icon .icon-inner .icon-auto-label.len-md { font-size: 11px; }
 .endpoint-icon .icon-inner .icon-auto-label.len-sm { font-size: 9.5px; }
 .endpoint-icon .icon-inner .icon-auto-label.len-xs { font-size: 8px; }
+
+/* 국기 emoji — 다크 원 + 시리즈 색 링/글로우 안에 살짝 크게 배치.
+   emoji 가 원 안에서 너무 작아 보이지 않도록 line-height 도 조정 */
+.endpoint-icon .icon-inner .icon-emoji-flag {
+  font-size: 22px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  /* 시스템 emoji 폰트 우선 — 색상 emoji 가 일관되게 표시 */
+  font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+}
 
 .endpoint-icon .icon-meta {
   display: flex;
@@ -2269,11 +3075,11 @@ button.ghost.ghost-warn:hover {
 }
 .endpoint-icon.bounce .icon-inner { animation: endpointBounce 0.6s cubic-bezier(.34,1.56,.64,1); }
 
-/* 추월 펄스 — 0.9 → 1.15 → 1 작은 bounce + glow 일시 강화. 텍스트 없이 시각적 신호만. */
+/* 추월 펄스 — 0.9 → 1.15 → 1 작은 bounce + glow 일시 강화. 글로우 -40% 반영 (피크는 강조 유지). */
 @keyframes overtakePulse {
-  0%   { transform: scale(0.9);  box-shadow: 0 0 0 2px rgba(0,0,0,0.45), 0 0 14px currentColor, 0 0 22px currentColor; }
-  50%  { transform: scale(1.15); box-shadow: 0 0 0 2px rgba(0,0,0,0.45), 0 0 26px currentColor, 0 0 42px currentColor; }
-  100% { transform: scale(1);    box-shadow: 0 0 0 2px rgba(0,0,0,0.45), 0 0 14px currentColor, 0 0 22px currentColor; }
+  0%   { transform: scale(0.9);  box-shadow: 0 0 0 2px rgba(0,0,0,0.45), 0 0 8px  currentColor, 0 0 13px currentColor; }
+  50%  { transform: scale(1.15); box-shadow: 0 0 0 2px rgba(0,0,0,0.45), 0 0 16px currentColor, 0 0 26px currentColor; }
+  100% { transform: scale(1);    box-shadow: 0 0 0 2px rgba(0,0,0,0.45), 0 0 8px  currentColor, 0 0 13px currentColor; }
 }
 .endpoint-icon.overtake-pulse .icon-inner {
   animation: overtakePulse 0.5s ease-out;
@@ -2701,9 +3507,9 @@ button.ghost.ghost-warn:hover {
 
 /* 모바일 화면(가로폭 ≤768) 폰트/간격 추가 미세조정 */
 @media (max-width: 767px) {
-  /* 제목: 화면이 좁을 때 더 작게 시작 — 자리수 많아도 안전 */
-  .title { font-size: clamp(22px, 7.5vw, 36px); }
-  .subtitle { font-size: clamp(13px, 4vw, 18px); }
+  /* 모바일 (Shorts 타깃) — 첫 0.5초 가독성. 2~3배 확대. */
+  .title { font-size: clamp(38px, 13.5vw, 64px); }
+  .subtitle { font-size: clamp(16px, 4.8vw, 22px); }
 
   /* 차트 안 끝점 라벨 — 큰 숫자 자동 축소 */
   .endpoint-icon .icon-inner { width: 30px; height: 30px; font-size: 16px; }
